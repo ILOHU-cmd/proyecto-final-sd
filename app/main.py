@@ -8,7 +8,7 @@ Expone dos grupos de endpoints:
   GET /fed/health y POST /fed/messages.
 
 El servidor guarda todo en SQLite, mantiene un reloj de Lamport persistente y
-delega el envío/reintento al central en ``CentralClient``, que corre como
+delega el envío/reintento al central en ``ClienteCentral``, que corre como
 tarea de fondo desde el arranque.
 """
 
@@ -20,8 +20,8 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, HTTPException, Query, status
 
-from app.central_client import CentralClient
-from app.config import load_settings
+from app.central_client import ClienteCentral
+from app.config import cargar_configuracion
 from app.database import Database
 from app.lamport import LamportClock
 from app.logger import log_error, log_event, setup_logging
@@ -44,13 +44,13 @@ from app.models import (
 # Composición de la aplicación
 # ---------------------------------------------------------------------------
 
-settings = load_settings()
-setup_logging(settings.log_level, settings.group_name)
+configuracion = cargar_configuracion()
+setup_logging(configuracion.nivel_registro, configuracion.nombre_grupo)
 
-database = Database(settings.db_path)
+database = Database(configuracion.ruta_base_datos)
 database.init_schema()
 clock = LamportClock(database)
-central_client = CentralClient(settings, database, clock)
+central_client = ClienteCentral(configuracion, database, clock)
 
 
 @asynccontextmanager
@@ -58,14 +58,14 @@ async def lifespan(_: FastAPI):
     """Arranca y detiene las tareas de fondo junto con el servidor."""
     log_event(
         "ARRANQUE",
-        servidor=settings.group_name,
-        url_publica=settings.public_url,
-        central=settings.central_url,
-        db=settings.db_path,
+        servidor=configuracion.nombre_grupo,
+        url_publica=configuracion.url_publica,
+        central=configuracion.url_central,
+        db=configuracion.ruta_base_datos,
     )
 
     central_task = asyncio.create_task(
-        central_client.run(), name=f"central-client-{settings.group_name}"
+        central_client.ejecutar(), name=f"central-client-{configuracion.nombre_grupo}"
     )
 
     def _report_task_end(task: asyncio.Task[None]) -> None:
@@ -85,16 +85,16 @@ async def lifespan(_: FastAPI):
     try:
         yield
     finally:
-        central_client.request_stop()
+        central_client.solicitar_apagado()
         central_task.cancel()
         with suppress(asyncio.CancelledError):
             await central_task
         database.close()
-        log_event("APAGADO", servidor=settings.group_name)
+        log_event("APAGADO", servidor=configuracion.nombre_grupo)
 
 
 app = FastAPI(
-    title=f"Chat distribuido - {settings.group_name}",
+    title=f"Chat distribuido - {configuracion.nombre_grupo}",
     version="1.0.0",
     description=(
         "Servidor de grupo para la sala global #general. "
@@ -106,7 +106,7 @@ app = FastAPI(
 
 def _identity(username: str) -> str:
     """Identificador visible del usuario, por ejemplo ana@g3."""
-    return f"{username}@{settings.group_name}"
+    return f"{username}@{configuracion.nombre_grupo}"
 
 
 # ---------------------------------------------------------------------------
@@ -118,9 +118,9 @@ def _identity(username: str) -> str:
 def service_info() -> ServiceInfo:
     """Datos útiles para saber a qué servidor estamos conectados."""
     return ServiceInfo(
-        server=settings.group_name,
-        public_url=settings.public_url,
-        central_url=settings.central_url,
+        server=configuracion.nombre_grupo,
+        public_url=configuracion.url_publica,
+        central_url=configuracion.url_central,
         lamport=clock.value,
     )
 
@@ -128,16 +128,18 @@ def service_info() -> ServiceInfo:
 @app.get("/health", response_model=HealthResponse, tags=["info"])
 def health() -> HealthResponse:
     """Salud del propio servidor de grupo (la usa el healthcheck de Docker)."""
-    return HealthResponse(status="ok", server=settings.group_name, lamport=clock.value)
+    return HealthResponse(
+        status="ok", server=configuracion.nombre_grupo, lamport=clock.value
+    )
 
 
 @app.get("/status", response_model=ServerStatus, tags=["info"])
 def server_status() -> ServerStatus:
     """Estado que usa el CLI y el script del experimento."""
     return ServerStatus(
-        server=settings.group_name,
+        server=configuracion.nombre_grupo,
         lamport=clock.value,
-        central_online=central_client.is_online,
+        central_online=central_client.esta_en_linea,
         pending_messages=database.pending_outbox_count(),
         users=database.count_users(),
     )
@@ -211,7 +213,7 @@ def send_message(payload: SendMessageRequest) -> Message:
         {
             "id": str(uuid.uuid4()),
             "from": _identity(payload.user),
-            "origin": settings.group_name,
+            "origin": configuracion.nombre_grupo,
             "lamport": lamport,
             "sent_at": utc_now_iso(),
             "body": payload.body,
@@ -264,7 +266,7 @@ def list_messages(
 @app.get("/fed/health", response_model=FedHealth, tags=["federado"])
 def fed_health() -> FedHealth:
     """Heartbeat del servidor de grupo, visto desde el central."""
-    return FedHealth(server=settings.group_name, lamport=clock.value)
+    return FedHealth(server=configuracion.nombre_grupo, lamport=clock.value)
 
 
 @app.post("/fed/messages", response_model=FedReceiveResponse, tags=["federado"])
