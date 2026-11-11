@@ -1,17 +1,22 @@
 """Configuración del servidor de grupo.
 
-Toda la configuración entra por variables de entorno. En particular, la URL
-del servidor central NUNCA está escrita en el código: el mismo contenedor debe
-servir para trabajar en el computador del grupo y para la sesión de
-interoperabilidad del curso.
+Todo lo configurable entra por variables de entorno. La regla más importante
+es que la URL del servidor central NUNCA está escrita en el código: el mismo
+contenedor debe poder conectarse al central de prueba en casa y al central
+real del profesor en la sesión de interoperabilidad, sin cambiar una línea.
 
-Variables principales (las exige el enunciado):
+Las variables se leen y se validan al arrancar (en ``load_settings``). Si una
+variable viene mal, el servidor se detiene con un mensaje claro en lugar de
+fallar a mitad de la ejecución. Así un error de configuración se ve enseguida
+en el log, no minutos después en forma de un fallo raro.
+
+Variables que exige el enunciado:
     GROUP_NAME  -> nombre corto del grupo, por ejemplo "g3"
     PUBLIC_URL  -> URL con la que el servidor central puede alcanzarnos
     CENTRAL_URL -> URL base del servidor central del profesor
     PORT        -> puerto en el que escucha uvicorn
 
-Variables opcionales (sirven para el experimento de fallos):
+Variables opcionales (controlan el comportamiento ante fallos):
     DB_PATH, REGISTER_INTERVAL_SECONDS, HEARTBEAT_INTERVAL_SECONDS,
     HEARTBEAT_TIMEOUT_SECONDS, HEARTBEAT_FAILURES, REQUEST_TIMEOUT_SECONDS,
     RETRY_BASE_SECONDS, RETRY_MAX_SECONDS, LOG_LEVEL
@@ -23,28 +28,34 @@ import os
 import re
 from dataclasses import dataclass
 
-# Un nombre de grupo razonable: letras, números, punto, guion y guion bajo.
-# Se permiten nombres como g3, g3a o grupo-03.
+# Nombre de grupo permitido: letras, números, punto, guion y guion bajo.
+# Se aceptan "g3", "g3a" o "grupo-03" y se rechazan espacios y símbolos raros,
+# porque ese nombre luego forma la identidad visible "usuario@gN".
 _GROUP_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$")
 
 
 @dataclass(frozen=True)
 class Settings:
-    """Valores de configuración ya validados."""
+    """Valores de configuración ya validados y listos para usar.
 
-    group_name: str
-    public_url: str
-    central_url: str
-    port: int
-    db_path: str
-    register_interval_seconds: float
-    heartbeat_interval_seconds: float
-    heartbeat_timeout_seconds: float
-    heartbeat_failures: int
-    request_timeout_seconds: float
-    retry_base_seconds: float
-    retry_max_seconds: float
-    log_level: str
+    ``frozen=True`` hace el objeto inmutable: una vez creado, nadie puede
+    cambiar la URL del central o el nombre del grupo "por accidente" a mitad
+    de la ejecución. Es seguro compartirlo entre las tareas de fondo.
+    """
+
+    group_name: str  # identidad del servidor, p. ej. "g3"
+    public_url: str  # URL con la que el central nos llama
+    central_url: str  # URL base del central del profesor
+    port: int  # puerto de uvicorn (lo usa el contenedor, no la app)
+    db_path: str  # ruta del archivo SQLite
+    register_interval_seconds: float  # cada cuánto se renueva el registro
+    heartbeat_interval_seconds: float  # cada cuánto se consulta GET /health
+    heartbeat_timeout_seconds: float  # cuánto se espera cada GET /health
+    heartbeat_failures: int  # fallos seguidos para marcar el central caído
+    request_timeout_seconds: float  # timeout general de las peticiones
+    retry_base_seconds: float  # base del backoff exponencial
+    retry_max_seconds: float  # tope del backoff exponencial
+    log_level: str  # nivel de logs: INFO, DEBUG, WARNING...
 
 
 def _env_text(name: str, default: str) -> str:
@@ -54,6 +65,12 @@ def _env_text(name: str, default: str) -> str:
 
 
 def _env_float(name: str, default: float) -> float:
+    """Lee una variable numérica decimal.
+
+    Devuelve el valor por defecto si la variable no existe. Si existe pero no
+    es un número positivo, lanza ``ValueError`` con un mensaje que indica qué
+    variable está mal: fallar pronto es mejor que dejar un valor absurdo.
+    """
     raw = os.getenv(name)
     if raw is None or raw.strip() == "":
         return default
@@ -67,6 +84,7 @@ def _env_float(name: str, default: float) -> float:
 
 
 def _env_int(name: str, default: int) -> int:
+    """Lee una variable numérica entera positiva (igual política que la decimal)."""
     raw = os.getenv(name)
     if raw is None or raw.strip() == "":
         return default
@@ -80,7 +98,11 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _normalize_url(value: str, name: str) -> str:
-    """Quita la barra final y comprueba que sea una URL HTTP(S)."""
+    """Quita la barra final y comprueba que sea una URL HTTP(S).
+
+    Se quita la barra final para que al concatenar ``/register``, ``/health``
+    o ``/history`` no queden rutas con doble barra (``//register``).
+    """
     value = value.strip().rstrip("/")
     if not value.startswith(("http://", "https://")):
         raise ValueError(
@@ -90,7 +112,12 @@ def _normalize_url(value: str, name: str) -> str:
 
 
 def load_settings() -> Settings:
-    """Construye y valida la configuración a partir del entorno."""
+    """Construye y valida la configuración a partir del entorno.
+
+    Se llama una sola vez, al importar la aplicación. A partir de ahí todo el
+    código usa el objeto ``Settings`` y no vuelve a leer variables de entorno.
+    """
+    # Nombre del grupo. Define la identidad "usuario@gN" de nuestros usuarios.
     group_name = _env_text("GROUP_NAME", "g3")
     if not _GROUP_NAME_RE.fullmatch(group_name):
         raise ValueError(
@@ -98,6 +125,8 @@ def load_settings() -> Settings:
             f"(máximo 32 caracteres); se recibió {group_name!r}"
         )
 
+    # Puerto y URLs. PUBLIC_URL es la dirección que el central usará para
+    # alcanzarnos: debe ser una IP/URL pública, no "localhost".
     port = _env_int("PORT", 8000)
     public_url = _normalize_url(
         _env_text("PUBLIC_URL", f"http://localhost:{port}"), "PUBLIC_URL"
@@ -106,6 +135,7 @@ def load_settings() -> Settings:
         _env_text("CENTRAL_URL", "http://localhost:9000"), "CENTRAL_URL"
     )
 
+    # El tope del backoff no puede ser menor que su base; no tendría sentido.
     retry_base = _env_float("RETRY_BASE_SECONDS", 1.0)
     retry_max = _env_float("RETRY_MAX_SECONDS", 30.0)
     if retry_max < retry_base:
