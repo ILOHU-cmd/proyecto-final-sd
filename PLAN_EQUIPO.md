@@ -4,10 +4,10 @@
 **Repositorio:** <https://github.com/ILOHU-cmd/proyecto-final-sd>
 **Rama base:** `main`
 
-**Estado actual:** el esqueleto funcional ya está en `main`. La rama de Emerson
-(`feature/central-sync-resilience`) ya tiene su módulo documentado y con
-nombres explícitos. Falta que Daniela, Nataly y Mariana creen sus ramas y hagan
-sus aportes.
+**Estado actual:** el esqueleto funcional ya está en `main`. Las cuatro ramas
+de trabajo (`feature/core-api-models`, `feature/lamport-storage`,
+`feature/central-sync-resilience` y `feature/cli-docker-infra`) ya existen en
+el repositorio y parten de la misma base.
 
 > La estructura de carpetas, el `Dockerfile`, el `docker-compose.yml`, el
 > central de prueba, el script del experimento y el README base ya están hechos.
@@ -63,23 +63,29 @@ git config user.name "Nombre Apellido"
 git config user.email "correo@uis.edu.co"
 ```
 
-### Paso 3. Crear la rama personal
+### Paso 3. Cambiar a la rama personal
 
-Cada una ejecuta **solo la línea de su nombre**:
+Las cuatro ramas ya están creadas en el repositorio. Cada una ejecuta
+**solo la línea de su nombre**:
 
 ```bash
+git fetch origin
+
 # Daniela
-git switch -c feature/core-api-models
+git switch feature/core-api-models
 
 # Nataly
-git switch -c feature/lamport-storage
+git switch feature/lamport-storage
 
 # Emerson
-git switch -c feature/central-sync-resilience
+git switch feature/central-sync-resilience
 
 # Mariana
-git switch -c feature/cli-docker-infra
+git switch feature/cli-docker-infra
 ```
+
+Si `git switch` dice que la rama no existe, ejecuta `git fetch origin` y
+vuelve a intentarlo.
 
 ### Paso 4. Instalar y comprobar que el esqueleto funciona
 
@@ -620,22 +626,32 @@ git clone https://github.com/ILOHU-cmd/proyecto-final-sd.git
 cd proyecto-final-sd
 ```
 
-### 6.2 Cada una crea su rama desde `main`
+### 6.2 Cada una cambia a su rama
+
+Las ramas ya existen en el repositorio:
 
 ```bash
-git switch main
-git pull --ff-only origin main
-git switch -c feature/mi-rama
+git fetch origin
+git switch feature/mi-rama
+```
+
+Para actualizarse con lo último de `main` antes de pedir el merge:
+
+```bash
+git fetch origin
+git rebase origin/main
 ```
 
 ### 6.3 Orden de merge (solo Emerson)
 
 | Orden | Rama | Dueño | Motivo |
 |---|---|---|---|
-| 0 | `feature/central-sync-resilience` | Emerson | Solo documentación y renombres; deja la base lista. |
+| 0 | `feature/central-sync-resilience` | Emerson | **Ya integrada.** Dejó la base con los nombres en español. |
 | 1 | `feature/core-api-models` | Daniela | Define modelos y contratos de la API. |
 | 2 | `feature/lamport-storage` | Nataly | Base de datos, reloj y deduplicación. |
 | 3 | `feature/cli-docker-infra` | Mariana | Integra cliente, Docker y documentación. |
+
+El orden 0 ya está hecho. A partir de aquí se integra en el orden 1 → 2 → 3.
 
 ```bash
 git switch main
