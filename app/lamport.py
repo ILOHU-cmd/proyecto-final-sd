@@ -22,35 +22,35 @@ import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # Solo para tipos; evita un import circular en ejecución.
-    from app.database import Database
+    from app.database import BaseDatos
 
-_STATE_KEY = "lamport"
+_CLAVE_ESTADO = "lamport"
 
 
-class LamportClock:
+class RelojLamport:
     """Contador lógico persistente y seguro entre hilos."""
 
-    def __init__(self, database: Database) -> None:
-        self._db = database
-        self._lock = threading.Lock()
-        self._value = int(database.get_state(_STATE_KEY, "0"))
+    def __init__(self, base_datos: BaseDatos) -> None:
+        self._base_datos = base_datos
+        self._candado = threading.Lock()
+        self._valor = int(base_datos.obtener_estado(_CLAVE_ESTADO, "0"))
 
     @property
-    def value(self) -> int:
+    def valor(self) -> int:
         """Valor actual, sin modificarlo."""
-        with self._lock:
-            return self._value
+        with self._candado:
+            return self._valor
 
-    def tick(self) -> int:
+    def avanzar(self) -> int:
         """Evento de envío: incrementa el reloj y devuelve la nueva marca."""
-        with self._lock:
-            self._value += 1
-            self._db.set_state(_STATE_KEY, str(self._value))
-            return self._value
+        with self._candado:
+            self._valor += 1
+            self._base_datos.guardar_estado(_CLAVE_ESTADO, str(self._valor))
+            return self._valor
 
-    def observe(self, received_lamport: int) -> int:
+    def observar(self, lamport_recibido: int) -> int:
         """Evento de recepción: se sincroniza con la marca del mensaje recibido."""
-        with self._lock:
-            self._value = max(self._value, int(received_lamport)) + 1
-            self._db.set_state(_STATE_KEY, str(self._value))
-            return self._value
+        with self._candado:
+            self._valor = max(self._valor, int(lamport_recibido)) + 1
+            self._base_datos.guardar_estado(_CLAVE_ESTADO, str(self._valor))
+            return self._valor

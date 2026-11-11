@@ -27,9 +27,9 @@ import sqlite3
 import threading
 from dataclasses import dataclass
 
-from app.models import Message, utc_now_iso
+from app.models import Mensaje, ahora_utc_iso
 
-_SCHEMA = """
+_ESQUEMA = """
 CREATE TABLE IF NOT EXISTS users (
     username   TEXT PRIMARY KEY,
     created_at TEXT NOT NULL
@@ -67,131 +67,136 @@ CREATE TABLE IF NOT EXISTS state (
 
 
 @dataclass(frozen=True)
-class OutboxItem:
+class ElementoColaSalida:
     """Un mensaje pendiente y el número de intentos ya realizados."""
 
-    message: Message
-    attempts: int
+    mensaje: Mensaje
+    intentos: int
 
 
-class Database:
+class BaseDatos:
     """Acceso a datos con operaciones cortas y seguras entre hilos."""
 
-    def __init__(self, path: str) -> None:
-        self.path = path
+    def __init__(self, ruta: str) -> None:
+        self.ruta = ruta
 
         # En Docker la ruta es /data/chat.db. Si el directorio no existe, se
         # crea para que el contenedor arranque sin pasos manuales.
-        if path != ":memory:":
-            directory = os.path.dirname(os.path.abspath(path))
-            os.makedirs(directory, exist_ok=True)
+        if ruta != ":memory:":
+            directorio = os.path.dirname(os.path.abspath(ruta))
+            os.makedirs(directorio, exist_ok=True)
 
-        self._lock = threading.RLock()
-        self._conn = sqlite3.connect(path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        with self._lock:
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA synchronous=NORMAL")
-            self._conn.execute("PRAGMA busy_timeout=5000")
-            self._conn.execute("PRAGMA foreign_keys=ON")
+        self._candado = threading.RLock()
+        self._conexion = sqlite3.connect(ruta, check_same_thread=False)
+        self._conexion.row_factory = sqlite3.Row
+
+        with self._candado:
+            self._conexion.execute("PRAGMA journal_mode=WAL")
+            self._conexion.execute("PRAGMA synchronous=NORMAL")
+            self._conexion.execute("PRAGMA busy_timeout=5000")
+            self._conexion.execute("PRAGMA foreign_keys=ON")
 
     # ------------------------------------------------------------------
     # Esquema
     # ------------------------------------------------------------------
 
-    def init_schema(self) -> None:
-        with self._lock:
-            self._conn.executescript(_SCHEMA)
-            self._conn.commit()
+    def crear_esquema(self) -> None:
+        with self._candado:
+            self._conexion.executescript(_ESQUEMA)
+            self._conexion.commit()
 
-    def close(self) -> None:
-        with self._lock:
-            self._conn.close()
+    def cerrar(self) -> None:
+        with self._candado:
+            self._conexion.close()
 
     # ------------------------------------------------------------------
     # Usuarios
     # ------------------------------------------------------------------
 
-    def add_user(self, username: str) -> bool:
+    def agregar_usuario(self, nombre_usuario: str) -> bool:
         """Crea un usuario local. Devuelve False si ya existía."""
-        with self._lock:
-            cursor = self._conn.execute(
+        with self._candado:
+            cursor = self._conexion.execute(
                 "INSERT OR IGNORE INTO users (username, created_at) VALUES (?, ?)",
-                (username, utc_now_iso()),
+                (nombre_usuario, ahora_utc_iso()),
             )
-            self._conn.commit()
+            self._conexion.commit()
             return cursor.rowcount == 1
 
-    def user_exists(self, username: str) -> bool:
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT 1 FROM users WHERE username = ?", (username,)
+    def existe_usuario(self, nombre_usuario: str) -> bool:
+        with self._candado:
+            fila = self._conexion.execute(
+                "SELECT 1 FROM users WHERE username = ?", (nombre_usuario,)
             ).fetchone()
-            return row is not None
+            return fila is not None
 
-    def list_users(self) -> list[str]:
-        with self._lock:
-            rows = self._conn.execute(
+    def listar_usuarios(self) -> list[str]:
+        with self._candado:
+            filas = self._conexion.execute(
                 "SELECT username FROM users ORDER BY username"
             ).fetchall()
-            return [row["username"] for row in rows]
+            return [fila["username"] for fila in filas]
 
-    def count_users(self) -> int:
-        with self._lock:
-            row = self._conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()
-            return int(row["n"]) if row else 0
+    def contar_usuarios(self) -> int:
+        with self._candado:
+            fila = self._conexion.execute("SELECT COUNT(*) AS n FROM users").fetchone()
+            return int(fila["n"]) if fila else 0
 
     # ------------------------------------------------------------------
     # Mensajes e idempotencia
     # ------------------------------------------------------------------
 
-    def insert_message(self, message: Message) -> bool:
+    def insertar_mensaje(self, mensaje: Mensaje) -> bool:
         """Guarda un mensaje si su UUID no existe.
 
         Devuelve True si se insertó y False si era un duplicado. La operación
         es atómica: dos entregas simultáneas del mismo id no pueden crear dos
         filas.
         """
-        data = message.to_protocol_dict()
-        with self._lock:
-            cursor = self._conn.execute(
+        datos = mensaje.a_diccionario_protocolo()
+
+        with self._candado:
+            cursor = self._conexion.execute(
                 """
                 INSERT OR IGNORE INTO messages
                     (id, sender, origin, lamport, sent_at, body)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    data["id"],
-                    data["from"],
-                    data["origin"],
-                    data["lamport"],
-                    data["sent_at"],
-                    data["body"],
+                    datos["id"],
+                    datos["from"],
+                    datos["origin"],
+                    datos["lamport"],
+                    datos["sent_at"],
+                    datos["body"],
                 ),
             )
-            self._conn.commit()
+            self._conexion.commit()
             return cursor.rowcount == 1
 
-    def get_message(self, message_id: str) -> Message | None:
-        with self._lock:
-            row = self._conn.execute(
+    def obtener_mensaje(self, id_mensaje: str) -> Mensaje | None:
+        with self._candado:
+            fila = self._conexion.execute(
                 """
                 SELECT id, sender, origin, lamport, sent_at, body
                 FROM messages WHERE id = ?
                 """,
-                (message_id,),
+                (id_mensaje,),
             ).fetchone()
-        return self._row_to_message(row) if row is not None else None
 
-    def list_messages(self, since_lamport: int = 0, limit: int = 500) -> list[Message]:
+        return self._fila_a_mensaje(fila) if fila is not None else None
+
+    def listar_mensajes(
+        self, desde_lamport: int = 0, limite: int = 500
+    ) -> list[Mensaje]:
         """Historial ordenado por (lamport, origin).
 
-        ``since_lamport`` se interpreta como "lamport mayor o igual que". El
+        ``desde_lamport`` se interpreta como "lamport mayor o igual que". El
         cliente CLI pide un poco de solapamiento y descarta ids ya vistos;
         así no se pierden mensajes que comparten la misma marca de Lamport.
         """
-        with self._lock:
-            rows = self._conn.execute(
+        with self._candado:
+            filas = self._conexion.execute(
                 """
                 SELECT id, sender, origin, lamport, sent_at, body
                 FROM messages
@@ -199,26 +204,29 @@ class Database:
                 ORDER BY lamport ASC, origin ASC, id ASC
                 LIMIT ?
                 """,
-                (since_lamport, limit),
+                (desde_lamport, limite),
             ).fetchall()
-        return [self._row_to_message(row) for row in rows]
 
-    def count_messages(self) -> int:
-        with self._lock:
-            row = self._conn.execute("SELECT COUNT(*) AS n FROM messages").fetchone()
-            return int(row["n"]) if row else 0
+        return [self._fila_a_mensaje(fila) for fila in filas]
+
+    def contar_mensajes(self) -> int:
+        with self._candado:
+            fila = self._conexion.execute(
+                "SELECT COUNT(*) AS n FROM messages"
+            ).fetchone()
+            return int(fila["n"]) if fila else 0
 
     @staticmethod
-    def _row_to_message(row: sqlite3.Row) -> Message:
+    def _fila_a_mensaje(fila: sqlite3.Row) -> Mensaje:
         """Traduce una fila SQLite al modelo del protocolo."""
-        return Message.model_validate(
+        return Mensaje.model_validate(
             {
-                "id": row["id"],
-                "from": row["sender"],
-                "origin": row["origin"],
-                "lamport": row["lamport"],
-                "sent_at": row["sent_at"],
-                "body": row["body"],
+                "id": fila["id"],
+                "from": fila["sender"],
+                "origin": fila["origin"],
+                "lamport": fila["lamport"],
+                "sent_at": fila["sent_at"],
+                "body": fila["body"],
             }
         )
 
@@ -226,22 +234,24 @@ class Database:
     # Cola de salida persistente
     # ------------------------------------------------------------------
 
-    def enqueue_outbox(self, message_id: str) -> None:
-        with self._lock:
-            self._conn.execute(
+    def encolar_salida(self, id_mensaje: str) -> None:
+        with self._candado:
+            self._conexion.execute(
                 """
                 INSERT OR IGNORE INTO outbox
                     (message_id, attempts, next_retry_at, created_at)
                 VALUES (?, 0, 0, ?)
                 """,
-                (message_id, utc_now_iso()),
+                (id_mensaje, ahora_utc_iso()),
             )
-            self._conn.commit()
+            self._conexion.commit()
 
-    def get_due_outbox(self, now: float, limit: int = 20) -> list[OutboxItem]:
+    def obtener_cola_pendiente(
+        self, ahora: float, limite: int = 20
+    ) -> list[ElementoColaSalida]:
         """Mensajes cuyo próximo intento ya venció, del más antiguo al más nuevo."""
-        with self._lock:
-            rows = self._conn.execute(
+        with self._candado:
+            filas = self._conexion.execute(
                 """
                 SELECT m.id, m.sender, m.origin, m.lamport, m.sent_at, m.body,
                        o.attempts
@@ -251,80 +261,88 @@ class Database:
                 ORDER BY o.next_retry_at ASC, m.lamport ASC
                 LIMIT ?
                 """,
-                (now, limit),
+                (ahora, limite),
             ).fetchall()
+
         return [
-            OutboxItem(message=self._row_to_message(row), attempts=int(row["attempts"]))
-            for row in rows
+            ElementoColaSalida(
+                mensaje=self._fila_a_mensaje(fila),
+                intentos=int(fila["attempts"]),
+            )
+            for fila in filas
         ]
 
-    def schedule_outbox_retry(
-        self, message_id: str, attempts: int, next_retry_at: float
+    def programar_reintento_cola(
+        self, id_mensaje: str, intentos: int, proximo_intento_en: float
     ) -> None:
-        with self._lock:
-            self._conn.execute(
+        with self._candado:
+            self._conexion.execute(
                 """
                 UPDATE outbox
                 SET attempts = ?, next_retry_at = ?
                 WHERE message_id = ?
                 """,
-                (attempts, next_retry_at, message_id),
+                (intentos, proximo_intento_en, id_mensaje),
             )
-            self._conn.commit()
+            self._conexion.commit()
 
-    def remove_outbox(self, message_id: str) -> None:
+    def quitar_de_cola(self, id_mensaje: str) -> None:
         """Quita de la cola: el central aceptó el mensaje o lo rechazó con 4xx."""
-        with self._lock:
-            self._conn.execute("DELETE FROM outbox WHERE message_id = ?", (message_id,))
-            self._conn.commit()
+        with self._candado:
+            self._conexion.execute(
+                "DELETE FROM outbox WHERE message_id = ?", (id_mensaje,)
+            )
+            self._conexion.commit()
 
-    def pending_outbox_count(self) -> int:
-        with self._lock:
-            row = self._conn.execute("SELECT COUNT(*) AS n FROM outbox").fetchone()
-            return int(row["n"]) if row else 0
+    def contar_pendientes(self) -> int:
+        with self._candado:
+            fila = self._conexion.execute("SELECT COUNT(*) AS n FROM outbox").fetchone()
+            return int(fila["n"]) if fila else 0
 
     # ------------------------------------------------------------------
     # Estado pequeño (reloj y marcas de sincronización)
     # ------------------------------------------------------------------
 
-    def get_state(self, key: str, default: str = "0") -> str:
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT value FROM state WHERE key = ?", (key,)
+    def obtener_estado(self, clave: str, por_defecto: str = "0") -> str:
+        with self._candado:
+            fila = self._conexion.execute(
+                "SELECT value FROM state WHERE key = ?", (clave,)
             ).fetchone()
-            return str(row["value"]) if row is not None else default
+            return str(fila["value"]) if fila is not None else por_defecto
 
-    def set_state(self, key: str, value: str) -> None:
-        with self._lock:
-            self._conn.execute(
+    def guardar_estado(self, clave: str, valor: str) -> None:
+        with self._candado:
+            self._conexion.execute(
                 """
                 INSERT INTO state (key, value) VALUES (?, ?)
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value
                 """,
-                (key, value),
+                (clave, valor),
             )
-            self._conn.commit()
+            self._conexion.commit()
 
-    def advance_state_int(self, key: str, value: int) -> int:
+    def avanzar_estado_entero(self, clave: str, valor: int) -> int:
         """Sube una marca entera solo si el nuevo valor es mayor.
 
-        Se usa para ``last_history_lamport``: varias tareas (heartbeat e
-        ingreso federado) pueden intentar avanzarla al mismo tiempo. Hacerlo
-        en una sola operación evita una condición de carrera.
+        Se usa para ``last_history_lamport``: varias tareas (latido e ingreso
+        federado) pueden intentar avanzarla al mismo tiempo. Hacerlo en una
+        sola operación evita una condición de carrera.
         """
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT value FROM state WHERE key = ?", (key,)
+        with self._candado:
+            fila = self._conexion.execute(
+                "SELECT value FROM state WHERE key = ?", (clave,)
             ).fetchone()
-            current = int(row["value"]) if row is not None else 0
-            new_value = max(current, int(value))
-            if row is None or new_value != current:
-                self._conn.execute(
+            actual = int(fila["value"]) if fila is not None else 0
+            nuevo_valor = max(actual, int(valor))
+
+            if fila is None or nuevo_valor != actual:
+                self._conexion.execute(
                     """
                     INSERT INTO state (key, value) VALUES (?, ?)
                     ON CONFLICT(key) DO UPDATE SET value = excluded.value
                     """,
-                    (key, str(new_value)),
+                    (clave, str(nuevo_valor)),
                 )
-                self._conn.commit()
-            return new_value
+                self._conexion.commit()
+
+            return nuevo_valor

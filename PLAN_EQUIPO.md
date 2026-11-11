@@ -247,20 +247,20 @@ Esqueleto:
 ```python
 import tempfile
 
-from app.database import Database
-from app.lamport import LamportClock
-from app.models import Message
+from app.database import BaseDatos
+from app.lamport import RelojLamport
+from app.models import Mensaje
 
 
 def crear_base():
     ruta = tempfile.mktemp(suffix=".db")
-    base = Database(ruta)
-    base.init_schema()
+    base = BaseDatos(ruta)
+    base.crear_esquema()
     return base
 
 
-def crear_mensaje(identificador: str, lamport: int = 1) -> Message:
-    return Message.model_validate(
+def crear_mensaje(identificador: str, lamport: int = 1) -> Mensaje:
+    return Mensaje.model_validate(
         {
             "id": identificador,
             "from": "ana@g3",
@@ -276,23 +276,23 @@ def test_deduplicacion():
     base = crear_base()
     mensaje = crear_mensaje("11111111-1111-4111-8111-111111111111")
 
-    assert base.insert_message(mensaje) is True
-    assert base.insert_message(mensaje) is False
-    assert base.count_messages() == 1
+    assert base.insertar_mensaje(mensaje) is True
+    assert base.insertar_mensaje(mensaje) is False
+    assert base.contar_mensajes() == 1
 
 
 def test_reloj():
     base = crear_base()
-    reloj = LamportClock(base)
+    reloj = RelojLamport(base)
 
-    assert reloj.tick() == 1
-    assert reloj.observe(10) == 11
+    assert reloj.avanzar() == 1
+    assert reloj.observar(10) == 11
 ```
 
 Casos que debes agregar:
 
 - Un reloj nuevo sobre la misma base conserva el valor.
-- `list_messages` respeta el orden `(lamport, origin, id)`.
+- `listar_mensajes` respeta el orden `(lamport, origin, id)`.
 - La cola `outbox` se encola, se reprograma y se elimina.
 - Un reinicio conserva usuarios, historial y reloj.
 
@@ -440,7 +440,7 @@ puedes crear `tests/test_cli.py`.
 **Paso 1. Crear `tests/test_cli.py`**
 
 ```python
-from client.cli import format_message
+from client.cli import formatear_mensaje
 
 
 def test_mensaje_propio():
@@ -453,7 +453,7 @@ def test_mensaje_propio():
         "body": "hola",
     }
 
-    texto = format_message(mensaje, own_server="g3", color=False)
+    texto = formatear_mensaje(mensaje, servidor_propio="g3", color=False)
 
     assert "ana@g3" in texto
     assert "hola" in texto
@@ -524,18 +524,18 @@ fix(docker): ajusta healthcheck/volumen si hace falta
 
 | Contrato | Dueño | Lo usan |
 |---|---|---|
-| `Message`, `SendMessageRequest` y el alias `from` | Daniela | Todos |
+| `Mensaje`, `SolicitudEnvioMensaje` y el alias `from` | Daniela | Todos |
 | Endpoints `/`, `/health`, `/users`, `/messages`, `/fed/*` | Daniela | Mariana (CLI), central |
-| `Database` (`insert_message`, `list_messages`, `enqueue_outbox`, ...) | Nataly | Daniela, Emerson |
-| `LamportClock.tick()`, `.observe()`, `.value` | Nataly | Daniela, Emerson |
+| `BaseDatos` (`insertar_mensaje`, `listar_mensajes`, `encolar_salida`, ...) | Nataly | Daniela, Emerson |
+| `RelojLamport.avanzar()`, `.observar()`, `.valor` | Nataly | Daniela, Emerson |
 | `ClienteCentral.ejecutar()`, `.en_linea`, `.solicitar_apagado()` | Emerson | Daniela |
 | `Configuracion` (campos) y variables de entorno | Emerson | Todos |
 | Servicios y volúmenes del `docker-compose.yml` | Mariana | Todos |
 
-### 3.1 Nombres ya renombrados por Emerson
+### 3.1 Nombres internos: antes y ahora
 
-Si tu rama nació antes de este cambio, después del merge de Emerson actualiza
-los nombres en tu código:
+Todo el código interno quedó en español. Estas son las equivalencias
+principales, por si aparece una referencia vieja:
 
 | Antes | Ahora |
 |---|---|
@@ -546,6 +546,24 @@ los nombres en tu código:
 | `is_online` | `en_linea` |
 | `request_stop()` | `solicitar_apagado()` |
 | `exponential_backoff` | `calcular_espera_reintento` |
+| `Database` | `BaseDatos` |
+| `insert_message` | `insertar_mensaje` |
+| `list_messages` | `listar_mensajes` |
+| `get_due_outbox` | `obtener_cola_pendiente` |
+| `LamportClock` | `RelojLamport` |
+| `tick()` | `avanzar()` |
+| `observe()` | `observar()` |
+| `Message` | `Mensaje` |
+| `SendMessageRequest` | `SolicitudEnvioMensaje` |
+| `log_event` | `registrar_evento` |
+| `format_message` | `formatear_mensaje` |
+
+Lo que **no** se tradujo, porque es el contrato del curso:
+
+- rutas HTTP: `/register`, `/messages`, `/history`, `/health`, `/fed/messages`;
+- campos JSON: `id`, `from`, `origin`, `lamport`, `sent_at`, `body`;
+- variables de entorno: `GROUP_NAME`, `PUBLIC_URL`, `CENTRAL_URL`, `PORT`;
+- nombres de servicios Docker: `chat-g3`, `chat-g3-b`, `central`.
 
 ---
 
