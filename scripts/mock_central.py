@@ -45,23 +45,23 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)-7s [central-mock] %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
-logger = logging.getLogger("mock-central")
+registro = logging.getLogger("mock-central")
 
 
-class RegisterPayload(BaseModel):
+class CuerpoRegistro(BaseModel):
     server: str = Field(min_length=1, max_length=32)
     url: str = Field(min_length=1)
 
     @field_validator("url")
     @classmethod
-    def _validate_url(cls, value: str) -> str:
+    def _validar_url(cls, value: str) -> str:
         value = value.strip().rstrip("/")
         if not value.startswith(("http://", "https://")):
             raise ValueError("url debe comenzar por http:// o https://")
         return value
 
 
-class MessagePayload(BaseModel):
+class CuerpoMensaje(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     id: str
@@ -72,205 +72,244 @@ class MessagePayload(BaseModel):
     body: str
 
 
-class CentralState:
+class EstadoCentral:
     """Registro de servidores e historial global, protegidos por un candado."""
 
     def __init__(self) -> None:
-        self.lock = threading.RLock()
-        self.servers: dict[str, str] = {}
-        self.messages: list[dict[str, Any]] = []
-        self.ids: set[str] = set()
+        self.candado = threading.RLock()
+        self.servidores: dict[str, str] = {}
+        self.mensajes: list[dict[str, Any]] = []
+        self.identificadores: set[str] = set()
 
         # Inyección de fallos para la demo de reintentos (0/None = normal).
-        self.fail_first = 0
-        self.reject_after: int | None = None
-        self.attempts = 0
-        self.accepted = 0
+        self.fallar_primeros = 0
+        self.rechazar_despues_de: int | None = None
+        self.intentos = 0
+        self.aceptados = 0
 
-    def register(self, server: str, url: str) -> int:
-        with self.lock:
-            self.servers[server] = url
-            return len(self.servers)
+    def registrar(self, servidor: str, url: str) -> int:
+        with self.candado:
+            self.servidores[servidor] = url
+            return len(self.servidores)
 
-    def add_message(self, message: dict[str, Any]) -> bool:
-        with self.lock:
-            if message["id"] in self.ids:
+    def agregar_mensaje(self, mensaje: dict[str, Any]) -> bool:
+        with self.candado:
+            if mensaje["id"] in self.identificadores:
                 return False
-            self.ids.add(message["id"])
-            self.messages.append(message)
-            self.accepted += 1
+
+            self.identificadores.add(mensaje["id"])
+            self.mensajes.append(mensaje)
+            self.aceptados += 1
             return True
 
-    def targets_for(self, origin: str) -> list[tuple[str, str]]:
-        with self.lock:
+    def destinos_para(self, origen: str) -> list[tuple[str, str]]:
+        with self.candado:
             return [
-                (server, url)
-                for server, url in self.servers.items()
-                if server != origin
+                (servidor, url)
+                for servidor, url in self.servidores.items()
+                if servidor != origen
             ]
 
-    def history(self, since: int, limit: int) -> list[dict[str, Any]]:
-        with self.lock:
-            selected = [m for m in self.messages if m["lamport"] > since]
-            selected.sort(key=lambda m: (m["lamport"], m["origin"], m["id"]))
-            return selected[:limit]
+    def historial(self, since: int, limite: int) -> list[dict[str, Any]]:
+        with self.candado:
+            seleccionados = [
+                mensaje for mensaje in self.mensajes if mensaje["lamport"] > since
+            ]
+            seleccionados.sort(
+                key=lambda mensaje: (
+                    mensaje["lamport"],
+                    mensaje["origin"],
+                    mensaje["id"],
+                )
+            )
+            return seleccionados[:limite]
 
 
-state = CentralState()
-_http: httpx.AsyncClient | None = None
+estado = EstadoCentral()
+_cliente_http: httpx.AsyncClient | None = None
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
-    global _http
-    _http = httpx.AsyncClient(timeout=3.0)
-    logger.info("servidor central de prueba listo")
+async def ciclo_vida(_: FastAPI):
+    global _cliente_http
+    _cliente_http = httpx.AsyncClient(timeout=3.0)
+    registro.info("servidor central de prueba listo")
+
     try:
         yield
     finally:
-        if _http is not None:
-            await _http.aclose()
-        logger.info("servidor central de prueba apagado")
+        if _cliente_http is not None:
+            await _cliente_http.aclose()
+        registro.info("servidor central de prueba apagado")
 
 
 app = FastAPI(
     title="Central de prueba - chat distribuido",
     version="1.0.0",
-    lifespan=lifespan,
+    lifespan=ciclo_vida,
 )
 
 
-async def _forward(message: dict[str, Any]) -> None:
+async def _reenviar(mensaje: dict[str, Any]) -> None:
     """Reenvía el mensaje a todos los servidores registrados menos al origen.
 
     El central del curso hace lo mismo. Si un grupo está caído, el envío
     falla; ese grupo recuperará el mensaje con GET /history al volver.
     """
-    if _http is None:
+    if _cliente_http is None:
         return
 
-    targets = state.targets_for(str(message["origin"]))
-    if not targets:
+    destinos = estado.destinos_para(str(mensaje["origin"]))
+    if not destinos:
         return
 
-    for server, url in targets:
+    for servidor, url in destinos:
         try:
-            response = await _http.post(f"{url}/fed/messages", json=message)
-            logger.info(
-                "reenvío id=%s lamport=%s -> %s status=%s",
-                message["id"],
-                message["lamport"],
-                server,
-                response.status_code,
+            respuesta = await _cliente_http.post(
+                f"{url}/fed/messages",
+                json=mensaje,
             )
-        except httpx.HTTPError as exc:
-            logger.warning(
+            registro.info(
+                "reenvío id=%s lamport=%s -> %s status=%s",
+                mensaje["id"],
+                mensaje["lamport"],
+                servidor,
+                respuesta.status_code,
+            )
+        except httpx.HTTPError as error:
+            registro.warning(
                 "no se pudo reenviar id=%s a %s: %s",
-                message["id"],
-                server,
-                type(exc).__name__,
+                mensaje["id"],
+                servidor,
+                type(error).__name__,
             )
 
 
 @app.get("/health")
-def health() -> dict[str, Any]:
-    with state.lock:
+def salud() -> dict[str, Any]:
+    with estado.candado:
         return {
             "status": "ok",
-            "servers": len(state.servers),
-            "messages": len(state.messages),
+            "servers": len(estado.servidores),
+            "messages": len(estado.mensajes),
         }
 
 
 @app.post("/register")
-def register(payload: RegisterPayload) -> dict[str, Any]:
-    total = state.register(payload.server, payload.url)
-    logger.info(
-        "registro server=%s url=%s total=%s", payload.server, payload.url, total
+def registrar(datos: CuerpoRegistro) -> dict[str, Any]:
+    total = estado.registrar(datos.server, datos.url)
+    registro.info(
+        "registro server=%s url=%s total=%s",
+        datos.server,
+        datos.url,
+        total,
     )
-    return {"status": "registered", "server": payload.server, "servers": total}
+    return {
+        "status": "registered",
+        "server": datos.server,
+        "servers": total,
+    }
 
 
 @app.post("/messages")
-def post_message(
-    payload: MessagePayload, background: BackgroundTasks
+def recibir_mensaje(
+    datos: CuerpoMensaje,
+    tareas_fondo: BackgroundTasks,
 ) -> dict[str, Any]:
-    data = payload.model_dump(by_alias=True)
+    contenido = datos.model_dump(by_alias=True)
 
     # Fallos programados para la demo de reintentos. No forman parte del
     # protocolo: son una herramienta didáctica del central de prueba.
-    with state.lock:
-        state.attempts += 1
-        attempt = state.attempts
-        fail_first = state.fail_first
-        reject_after = state.reject_after
-        accepted = state.accepted
+    with estado.candado:
+        estado.intentos += 1
+        intento = estado.intentos
+        fallar_primeros = estado.fallar_primeros
+        rechazar_despues_de = estado.rechazar_despues_de
+        aceptados = estado.aceptados
 
-    if attempt <= fail_first:
-        logger.warning("fallo temporal simulado (500) en el intento %s", attempt)
-        raise HTTPException(status_code=500, detail="fallo temporal simulado")
+    if intento <= fallar_primeros:
+        registro.warning(
+            "fallo temporal simulado (500) en el intento %s",
+            intento,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="fallo temporal simulado",
+        )
 
-    if reject_after is not None and accepted >= reject_after:
-        logger.warning("rechazo permanente simulado (400) en el intento %s", attempt)
-        raise HTTPException(status_code=400, detail="rechazo permanente simulado")
+    if rechazar_despues_de is not None and aceptados >= rechazar_despues_de:
+        registro.warning(
+            "rechazo permanente simulado (400) en el intento %s",
+            intento,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="rechazo permanente simulado",
+        )
 
     # Idempotencia del lado del central: si el grupo reintenta porque se
     # perdió la respuesta, no se guarda dos veces.
-    if not state.add_message(data):
-        logger.info("duplicado descartado id=%s", data["id"])
-        return {"status": "duplicate", "id": data["id"]}
+    if not estado.agregar_mensaje(contenido):
+        registro.info("duplicado descartado id=%s", contenido["id"])
+        return {"status": "duplicate", "id": contenido["id"]}
 
-    logger.info(
+    registro.info(
         "mensaje aceptado id=%s from=%s lamport=%s",
-        data["id"],
-        data["from"],
-        data["lamport"],
+        contenido["id"],
+        contenido["from"],
+        contenido["lamport"],
     )
 
     # Se responde al emisor y el reenvío ocurre después (BackgroundTasks):
     # un grupo lento no debe bloquear al emisor.
-    background.add_task(_forward, data)
-    return {"status": "accepted", "id": data["id"]}
+    tareas_fondo.add_task(_reenviar, contenido)
+    return {"status": "accepted", "id": contenido["id"]}
 
 
 @app.get("/history")
-def history(
-    since: int = Query(0, ge=0), limit: int = Query(10000, ge=1, le=100000)
+def historial(
+    since: int = Query(0, ge=0),
+    limit: int = Query(10000, ge=1, le=100000),
 ) -> dict[str, Any]:
-    messages = state.history(since, limit)
-    logger.info("historial since=%s devueltos=%s", since, len(messages))
-    return {"messages": messages}
+    mensajes = estado.historial(since, limit)
+    registro.info("historial since=%s devueltos=%s", since, len(mensajes))
+    return {"messages": mensajes}
 
 
 @app.get("/servers")
-def servers() -> dict[str, str]:
+def servidores() -> dict[str, str]:
     """Endpoint de depuración, no forma parte del protocolo."""
-    with state.lock:
-        return dict(state.servers)
+    with estado.candado:
+        return dict(estado.servidores)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Central de prueba en memoria")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=9000)
-    parser.add_argument(
+def principal() -> None:
+    analizador = argparse.ArgumentParser(description="Central de prueba en memoria")
+    analizador.add_argument("--host", default="127.0.0.1")
+    analizador.add_argument("--port", type=int, default=9000)
+    analizador.add_argument(
         "--fail-first",
         type=int,
         default=0,
         help="Devuelve 500 en los primeros N POST /messages (para ver reintentos).",
     )
-    parser.add_argument(
+    analizador.add_argument(
         "--reject-after",
         type=int,
         default=None,
         help="Después de aceptar N mensajes, devuelve 400 (para ver el descarte).",
     )
-    args = parser.parse_args()
+    argumentos = analizador.parse_args()
 
-    state.fail_first = max(0, args.fail_first)
-    state.reject_after = args.reject_after
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    estado.fallar_primeros = max(0, argumentos.fail_first)
+    estado.rechazar_despues_de = argumentos.reject_after
+    uvicorn.run(
+        app,
+        host=argumentos.host,
+        port=argumentos.port,
+        log_level="info",
+    )
 
 
 if __name__ == "__main__":
-    main()
+    principal()

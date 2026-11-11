@@ -99,7 +99,7 @@ En el `docker-compose.yml` hay tres servicios:
 | 1. Despliegue con `docker compose up` | `Dockerfile`, `docker-compose.yml` |
 | 2. Persistencia tras `restart` | SQLite en volumen `/data`; tablas `users`, `messages`, `outbox`, `state` |
 | 3. Usuarios locales | `POST /users`, `GET /users`, comando `create-user` |
-| 4. Registro periódico | `CentralClient._registration_loop` (`POST /register` cada 10 s) |
+| 4. Registro periódico | `ClienteCentral._bucle_registro` (`POST /register` cada 10 s) |
 | 5. Envío y recepción | `POST /messages` local, `POST /fed/messages`, cola `outbox` |
 | 6. Entrega al menos una vez | `outbox` persistente + reintentos + deduplicación por UUID |
 | 7. Orden lógico | `app/lamport.py`; historial `ORDER BY lamport, origin, id` |
