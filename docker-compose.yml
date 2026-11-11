@@ -1,0 +1,114 @@
+# Compose reproducible del servidor de grupo.
+#
+# Uso normal (con el central del profesor):
+#   cp .env.example .env    # ajustar PUBLIC_URL y CENTRAL_URL
+#   docker compose up --build
+#
+# Uso local con central de prueba incluido:
+#   docker compose --profile local up --build
+#
+# Dos servidores del mismo grupo para probar el experimento:
+#   docker compose --profile local --profile pair up --build
+
+name: chat-distribuido-g3
+
+# Valores comunes a cualquier servidor de grupo.
+x-group-common: &group-common
+  build:
+    context: .
+  image: chat-distribuido-g3:latest
+  restart: unless-stopped
+  extra_hosts:
+    # Permite que el contenedor alcance un central que corra en el anfitrión
+    # con http://host.docker.internal:9000 (útil en Linux con Docker moderno).
+    - "host.docker.internal:host-gateway"
+  networks:
+    - chat-net
+
+# Variables comunes. Cada servicio sobrescribe GROUP_NAME y PUBLIC_URL.
+x-group-env: &group-env
+  PORT: "8000"
+  DB_PATH: /data/chat.db
+  CENTRAL_URL: ${CENTRAL_URL:-http://central:9000}
+  REGISTER_INTERVAL_SECONDS: ${REGISTER_INTERVAL_SECONDS:-10}
+  HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-5}
+  HEARTBEAT_TIMEOUT_SECONDS: ${HEARTBEAT_TIMEOUT_SECONDS:-3}
+  HEARTBEAT_FAILURES: ${HEARTBEAT_FAILURES:-3}
+  REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-5}
+  RETRY_BASE_SECONDS: ${RETRY_BASE_SECONDS:-1}
+  RETRY_MAX_SECONDS: ${RETRY_MAX_SECONDS:-30}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+services:
+  # ------------------------------------------------------------------
+  # Servidor del grupo (g3 por defecto)
+  # ------------------------------------------------------------------
+  chat-g3:
+    <<: *group-common
+    container_name: chat-g3
+    environment:
+      <<: *group-env
+      GROUP_NAME: ${GROUP_NAME:-g3}
+      # URL con la que el central nos llama. En local funciona el nombre de
+      # servicio; para el central del profesor debe ser una IP/URL pública.
+      PUBLIC_URL: ${PUBLIC_URL:-http://chat-g3:8000}
+    ports:
+      - "${HOST_PORT:-8001}:8000"
+    volumes:
+      # Volumen persistente: usuarios, historial, reloj y cola sobreviven a
+      # docker compose restart. "docker compose down -v" sí borra los datos.
+      - chat_data:/data
+
+  # ------------------------------------------------------------------
+  # Segundo servidor del mismo grupo (opcional, perfil "pair").
+  # Sirve para medir latencia o para el experimento de caídas sin depender
+  # de otros grupos.
+  # ------------------------------------------------------------------
+  chat-g3-b:
+    <<: *group-common
+    profiles: ["pair"]
+    container_name: chat-g3-b
+    environment:
+      <<: *group-env
+      GROUP_NAME: ${GROUP_NAME_B:-g3b}
+      PUBLIC_URL: ${PUBLIC_URL_B:-http://chat-g3-b:8000}
+    ports:
+      - "${HOST_PORT_B:-8002}:8000"
+    volumes:
+      - chat_data_b:/data
+
+  # ------------------------------------------------------------------
+  # Central de prueba (opcional, perfil "local").
+  # NO es el central del profesor: guarda todo en memoria y existe solo para
+  # que el equipo pueda probar el sistema completo en su computador.
+  # ------------------------------------------------------------------
+  central:
+    profiles: ["local"]
+    build:
+      context: .
+    image: chat-distribuido-g3:latest
+    container_name: central-mock
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "scripts/mock_central.py",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "9000",
+      ]
+    environment:
+      PORT: "9000"
+    ports:
+      - "${CENTRAL_PORT:-9000}:9000"
+    networks:
+      - chat-net
+
+networks:
+  chat-net:
+    driver: bridge
+
+volumes:
+  chat_data:
+  chat_data_b:
