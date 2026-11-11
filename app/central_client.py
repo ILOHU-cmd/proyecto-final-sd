@@ -32,12 +32,9 @@ Se usa ``httpx.AsyncClient`` para que esperar una respuesta del central no
 bloquee el resto del servidor.
 """
 
-from __future__ import annotations
-
 import asyncio
 import random
 import time
-from typing import Any
 
 import httpx
 from pydantic import ValidationError
@@ -117,18 +114,10 @@ class ClienteCentral:
         # Bandera para pedir el apagado ordenado de las tareas.
         self._detenido = False
 
-        # Evita que dos sincronizaciones del historial corran a la vez.
-        self._candado_sincronizacion = asyncio.Lock()
-
         # La primera sincronización pide el historial completo (desde 0).
         # Las recuperaciones posteriores, sin reiniciar el proceso, piden solo
         # lo nuevo a partir de la última marca guardada.
         self._sincronizacion_inicial = True
-
-    @property
-    def esta_en_linea(self) -> bool:
-        """True si el central está disponible. Lo consulta el endpoint /status."""
-        return self.en_linea
 
     def solicitar_apagado(self) -> None:
         """Pide a las tareas que terminen cuando se apague el servidor."""
@@ -349,34 +338,29 @@ class ClienteCentral:
         el siguiente latido. Es mejor no enviar a ciegas y arriesgar un
         historial incompleto.
         """
-        # Si ya hay una sincronización en curso, no se lanza otra.
-        if self._candado_sincronizacion.locked():
+        if self._detenido:
             return
 
-        async with self._candado_sincronizacion:
-            if self._detenido:
-                return
+        log_event("RECUPERACIÓN_INICIO", central=self.configuracion.url_central)
 
-            log_event("RECUPERACIÓN_INICIO", central=self.configuracion.url_central)
+        # 1. Renovar el registro es barato e idempotente.
+        await self._registrar_una_vez()
 
-            # 1. Renovar el registro es barato e idempotente.
-            await self._registrar_una_vez()
-
-            # 2. Traer el historial perdido.
-            if not await self._sincronizar_historial():
-                log_event(
-                    "RECUPERACIÓN_FALLO",
-                    nota="se reintentará en el próximo latido",
-                )
-                return
-
-            # 3. Recién ahora se permite enviar otra vez.
-            self.en_linea = True
+        # 2. Traer el historial perdido.
+        if not await self._sincronizar_historial():
             log_event(
-                "RECUPERACIÓN_OK",
-                lamport=self.reloj.value,
-                pendientes=self.base_datos.pending_outbox_count(),
+                "RECUPERACIÓN_FALLO",
+                nota="se reintentará en el próximo latido",
             )
+            return
+
+        # 3. Recién ahora se permite enviar otra vez.
+        self.en_linea = True
+        log_event(
+            "RECUPERACIÓN_OK",
+            lamport=self.reloj.value,
+            pendientes=self.base_datos.pending_outbox_count(),
+        )
 
     async def _sincronizar_historial(self) -> bool:
         """Pide al central los mensajes posteriores a nuestra última marca.
@@ -479,7 +463,7 @@ class ClienteCentral:
         # El contrato admite una lista directa o un objeto con "messages".
         # Se aceptan las dos formas para no romper la interoperabilidad.
         if isinstance(datos, list):
-            mensajes_recibidos: Any = datos
+            mensajes_recibidos = datos
         elif isinstance(datos, dict):
             mensajes_recibidos = datos.get("messages", datos.get("history", []))
         else:

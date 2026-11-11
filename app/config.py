@@ -22,8 +22,6 @@ Variables opcionales (controlan el comportamiento ante fallos):
     RETRY_BASE_SECONDS, RETRY_MAX_SECONDS, LOG_LEVEL
 """
 
-from __future__ import annotations
-
 import os
 import re
 from dataclasses import dataclass

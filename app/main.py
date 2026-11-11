@@ -139,7 +139,7 @@ def server_status() -> ServerStatus:
     return ServerStatus(
         server=configuracion.nombre_grupo,
         lamport=clock.value,
-        central_online=central_client.esta_en_linea,
+        central_online=central_client.en_linea,
         pending_messages=database.pending_outbox_count(),
         users=database.count_users(),
     )
