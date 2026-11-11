@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Configuración local (cada grupo tiene sus URLs)
+.env
+
+# Base de datos local cuando se corre sin Docker
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Resultados temporales de pruebas
+.pytest_cache/
+.coverage
+.DS_Store
+
+# Herramientas de desarrollo
+.ruff_cache/
+.mypy_cache/
