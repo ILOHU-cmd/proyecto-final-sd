@@ -1,7 +1,9 @@
 # Guion del video — parte de Emerson (2:00 a 4:00)
 
-> **Nota:** este guion es para la **demo en vivo** de 2 minutos. El video animado
-> de 3 minutos usa `docs/GUION_VIDEO_VOZ.md` y el archivo `docs/presentacion.mp4`.
+> **Nota:** este guion es para la **demo en vivo** de 2 minutos. Para la parte de
+> Emerson hay un video animado enfocado de 1:46 en `docs/presentacion_emerson.mp4`
+> (guion: `docs/GUION_VIDEO_EMERSON_ANIMADO.md`). El video general del proyecto
+> sigue en `docs/presentacion.mp4` y `docs/GUION_VIDEO_VOZ.md`.
 
 **Tema:** sincronización con el servidor central, reintentos, latido,
 recuperación e idempotencia.

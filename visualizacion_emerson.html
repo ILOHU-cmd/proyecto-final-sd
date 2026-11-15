@@ -1,0 +1,2959 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClienteCentral · Emerson · visualización</title>
+<style>
+  :root {
+    --bg: #060a12;
+    --bg2: #0a1120;
+    --panel: #0d1626;
+    --panel2: #0b1422;
+    --line: #1c2a40;
+    --line2: #24344d;
+    --text: #e6edf7;
+    --muted: #9fb0c7;
+    --dim: #64748b;
+    --cyan: #22d3ee;
+    --cyan-d: #0891b2;
+    --amber: #fbbf24;
+    --violet: #a78bfa;
+    --green: #34d399;
+    --red: #f87171;
+    --pink: #f472b6;
+    --mono: "SFMono-Regular", "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-family: var(--sans);
+    background:
+      radial-gradient(1200px 700px at 18% -10%, rgba(34, 211, 238, .09), transparent 62%),
+      radial-gradient(1000px 620px at 92% 4%, rgba(167, 139, 250, .09), transparent 62%),
+      radial-gradient(900px 700px at 50% 110%, rgba(52, 211, 153, .05), transparent 60%),
+      var(--bg);
+    display: flex;
+    flex-direction: column;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: rgba(34, 211, 238, .28); color: #fff; }
+
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1e2d45; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #2b3f5e; }
+
+  /* ---------------------------------------------------------------- header */
+
+  #topbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 11px 16px 9px;
+  }
+
+  .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+  .logo {
+    width: 34px; height: 34px; flex: 0 0 auto;
+    border-radius: 10px;
+    display: grid; place-items: center;
+    color: var(--cyan);
+    background: linear-gradient(135deg, rgba(34, 211, 238, .18), rgba(167, 139, 250, .18));
+    border: 1px solid rgba(34, 211, 238, .35);
+    box-shadow: 0 0 26px rgba(34, 211, 238, .16), inset 0 0 14px rgba(34, 211, 238, .08);
+    font-size: 17px;
+  }
+  .brand h1 {
+    margin: 0;
+    font-size: 14.5px;
+    letter-spacing: .015em;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .brand h1 span { color: var(--dim); font-weight: 500; }
+  .brand p {
+    margin: 2px 0 0;
+    font-size: 10.5px;
+    color: var(--dim);
+    font-family: var(--mono);
+    white-space: nowrap;
+  }
+
+  .hud {
+    display: flex; align-items: center; gap: 9px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dim);
+    white-space: nowrap;
+  }
+  .hud .badge {
+    color: var(--cyan);
+    border: 1px solid rgba(34, 211, 238, .36);
+    background: rgba(34, 211, 238, .07);
+    padding: 3px 9px;
+    border-radius: 999px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .hud .sep { width: 1px; height: 14px; background: var(--line); }
+
+  /* ---------------------------------------------------------------- layout */
+
+  .layout {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(370px, 44%) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(118px, 19%);
+    gap: 10px;
+    padding: 0 12px 8px;
+  }
+
+  .panel {
+    min-height: 0;
+    background:
+      linear-gradient(180deg, rgba(18, 30, 49, .78), rgba(10, 18, 32, .88));
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .28), inset 0 1px 0 rgba(255, 255, 255, .025);
+    overflow: hidden;
+  }
+
+  .code-panel { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; }
+  .graph-panel { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; }
+  .explain-panel { grid-column: 1 / 3; grid-row: 2; display: grid; grid-template-columns: 1.42fr 1fr; }
+
+  .panel-head {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(9, 16, 29, .62);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--dim);
+  }
+  .dots { display: flex; gap: 5px; }
+  .dots i { width: 8px; height: 8px; border-radius: 50%; background: #334155; display: block; }
+  .dots i:nth-child(1) { background: #f87171; }
+  .dots i:nth-child(2) { background: #fbbf24; }
+  .dots i:nth-child(3) { background: #34d399; }
+  #fileName { color: var(--cyan); }
+  .tag {
+    margin-left: auto;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+
+  /* ------------------------------------------------------------------ code */
+
+  .code-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    background:
+      linear-gradient(90deg, rgba(34, 211, 238, .025), transparent 22%),
+      #080f1c;
+    scroll-behavior: smooth;
+  }
+  #codeBlock {
+    margin: 0;
+    padding: 9px 0 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 19px;
+    min-width: max-content;
+  }
+  .code-line {
+    display: flex;
+    gap: 12px;
+    padding: 0 14px;
+    border-left: 3px solid transparent;
+    white-space: pre;
+    transition: background .25s ease, border-color .25s ease;
+  }
+  .code-line .ln {
+    flex: 0 0 33px;
+    text-align: right;
+    color: #2f405b;
+    user-select: none;
+    font-size: 10.5px;
+  }
+  .code-line .src { color: #b8c6da; }
+  .code-line.active {
+    background: linear-gradient(90deg, rgba(34, 211, 238, .14), rgba(34, 211, 238, .018) 72%, transparent);
+    border-left-color: var(--cyan);
+    box-shadow: inset 0 0 26px rgba(34, 211, 238, .035);
+  }
+  .code-line.active .ln { color: var(--cyan); }
+  .code-line.active .src { color: #f7fbff; text-shadow: 0 0 14px rgba(34, 211, 238, .18); }
+
+  /* ------------------------------------------------------------------ vars */
+
+  .vars {
+    flex: 0 0 auto;
+    border-top: 1px solid var(--line);
+    padding: 8px 11px 10px;
+    background: rgba(8, 15, 28, .72);
+  }
+  .vars-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 6px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .vars-head span { letter-spacing: .02em; text-transform: none; color: #4d5f78; }
+  .var-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .var-chip {
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, #0b1526, #091220);
+    border-radius: 8px;
+    padding: 5px 7px;
+    min-width: 0;
+  }
+  .var-chip .k {
+    display: block;
+    font-size: 8.5px;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: #5b6d87;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .var-chip .v {
+    display: block;
+    margin-top: 1px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .var-chip.cyan .v { color: var(--cyan); }
+  .var-chip.violet .v { color: var(--violet); }
+  .var-chip.green .v { color: var(--green); }
+  .var-chip.amber .v { color: var(--amber); }
+  .var-chip.red .v { color: var(--red); }
+  .var-chip.muted .v { color: var(--dim); }
+
+  .msg-card {
+    margin-top: 6px;
+    min-height: 34px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 5px 8px;
+    background: linear-gradient(135deg, rgba(34, 211, 238, .06), rgba(167, 139, 250, .035));
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dim);
+    overflow: hidden;
+  }
+  .msg-card .meta { display: flex; gap: 10px; align-items: baseline; white-space: nowrap; }
+  .msg-card .meta b { color: var(--cyan); font-weight: 600; }
+  .msg-card .meta .l { color: var(--amber); }
+  .msg-card .meta .from { color: var(--violet); }
+  .msg-card .body {
+    margin-top: 2px;
+    color: #e8eef8;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .msg-card .empty { color: #465873; }
+
+  /* ----------------------------------------------------------------- graph */
+
+  .legend {
+    margin-left: auto;
+    display: flex; gap: 10px; align-items: center;
+    font-size: 9px; color: var(--dim);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .legend span { display: flex; align-items: center; gap: 4px; }
+  .legend i { width: 6px; height: 6px; border-radius: 50%; display: block; }
+  .legend .c1 { background: var(--cyan); }
+  .legend .c2 { background: var(--green); }
+  .legend .c3 { background: var(--violet); }
+  .legend .c4 { background: var(--red); }
+
+  .scene-wrap { flex: 1 1 auto; min-height: 0; position: relative; }
+  #scene { width: 100%; height: 100%; display: block; }
+
+  .node .node-bg {
+    fill: url(#nodeGrad);
+    stroke: #23344d;
+    stroke-width: 1.15;
+  }
+  .node .node-ring {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 2;
+    transition: stroke .3s ease;
+  }
+  .node.is-active .node-ring {
+    stroke: rgba(34, 211, 238, .62);
+    filter: url(#glow);
+  }
+  .node.offline { opacity: .34; filter: grayscale(.55); }
+  .node.warn .node-ring { stroke: rgba(248, 113, 113, .48); }
+  .node.central .node-bg { fill: url(#centralGrad); }
+
+  .status-dot { fill: #475569; transition: fill .3s ease; }
+  .status-dot.online { fill: var(--green); filter: url(#glow); }
+  .status-dot.offline { fill: var(--red); }
+  .status-dot.idle { fill: #64748b; }
+
+  .node-title { font-family: var(--sans); font-size: 15px; font-weight: 700; fill: #f1f5f9; }
+  .node-sub { font-family: var(--mono); font-size: 10px; fill: #5d708a; }
+  .node-status { font-family: var(--mono); font-size: 9.6px; fill: #64748b; }
+  .node-status.ok { fill: var(--green); }
+  .node-status.bad { fill: var(--red); }
+  .node-status.warn { fill: var(--amber); }
+
+  .clock-badge rect { fill: #0a1424; stroke: #334155; stroke-width: 1; }
+  .clock-badge text { font-family: var(--mono); font-size: 10.5px; font-weight: 700; fill: var(--cyan); }
+  .clock-badge.bump rect { animation: clockFlash .9s ease; }
+  .clock-badge.bump text { animation: clockText .9s ease; }
+  @keyframes clockFlash {
+    0%, 100% { fill: #0a1424; stroke: #334155; }
+    32% { fill: var(--cyan); stroke: var(--cyan); }
+  }
+  @keyframes clockText {
+    0%, 100% { fill: var(--cyan); }
+    32% { fill: #06121f; }
+  }
+
+  .tasks rect { fill: #0a1424; stroke: #1e2c42; }
+  .tasks text { font-family: var(--mono); font-size: 8.2px; fill: #64748b; }
+  .stat-label {
+    font-family: var(--mono); font-size: 9.2px; fill: #5d708a;
+    letter-spacing: .06em; text-transform: uppercase;
+  }
+  .stat-value { font-family: var(--mono); font-size: 22px; font-weight: 700; fill: #e2e8f0; }
+  .bar-bg { fill: #1a2940; }
+  .bar-fill { fill: var(--amber); transition: width .45s ease; }
+
+  .cli-title { font-family: var(--mono); font-size: 11px; font-weight: 700; fill: #cbd5e1; }
+  .cli-sub { font-family: var(--mono); font-size: 8.8px; fill: #475569; }
+  .cli-line { font-family: var(--mono); font-size: 9.2px; fill: #93a5bd; }
+  .cli-prompt { font-family: var(--mono); font-size: 9.2px; fill: var(--cyan); }
+  .cli-cursor { animation: blink 1.05s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .edge {
+    fill: none;
+    stroke: #1c2a40;
+    stroke-width: 1.35;
+    stroke-dasharray: 5 6;
+    stroke-linecap: round;
+    transition: stroke .3s ease, stroke-width .3s ease;
+  }
+  .edge-active {
+    stroke: var(--cyan);
+    stroke-width: 2.1;
+    stroke-dasharray: 7 5;
+    animation: dash 1s linear infinite;
+  }
+  .edge-fail {
+    stroke: var(--red);
+    stroke-width: 1.9;
+    stroke-dasharray: 3 5;
+    animation: dash .55s linear infinite;
+  }
+  .edge-off { stroke: #3b1d2a; }
+  @keyframes dash { to { stroke-dashoffset: -24; } }
+
+  .packet rect { fill: #0a1424; stroke: var(--cyan); stroke-width: 1.15; }
+  .packet text { font-family: var(--mono); font-size: 9px; fill: #e2e8f0; text-anchor: middle; }
+  .packet-response rect { stroke: var(--green); }
+  .packet-response text { fill: var(--green); }
+  .packet-forward rect { stroke: var(--violet); }
+  .packet-forward text { fill: var(--violet); }
+  .packet-fail rect { stroke: var(--red); fill: #2a1118; }
+  .packet-fail text { fill: var(--red); }
+  .packet-retry rect { stroke: var(--amber); stroke-dasharray: 3 2; }
+  .packet-retry text { fill: var(--amber); }
+  .packet-duplicate rect { stroke: var(--pink); fill: #241221; }
+  .packet-duplicate text { fill: var(--pink); }
+  .packet-heartbeat circle { fill: var(--cyan); opacity: .65; }
+  .packet-heartbeat .ring { fill: none; stroke: var(--cyan); stroke-width: 1.2; opacity: .5; }
+  .packet-heartbeat rect { stroke: var(--cyan); stroke-dasharray: 2 2; opacity: .9; }
+  .packet-heartbeat text { fill: var(--cyan); }
+  .packet-local rect { stroke: #94a3b8; }
+  .packet-local text { fill: #cbd5e1; }
+
+  .callout { pointer-events: none; transition: opacity .35s ease; }
+  .callout rect { fill: #0a1424; stroke: rgba(34, 211, 238, .42); stroke-width: 1; }
+  .callout-title { font-family: var(--mono); font-size: 11px; font-weight: 700; fill: var(--cyan); }
+  .callout-sub { font-family: var(--mono); font-size: 9px; fill: #93a5bd; }
+
+  /* ------------------------------------------------------------------ sala */
+
+  .sala {
+    flex: 0 0 auto;
+    border-top: 1px solid var(--line);
+    background: rgba(7, 13, 24, .7);
+    padding: 6px 11px 8px;
+    max-height: 132px;
+  }
+  .sala-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--mono);
+    font-size: 9.4px;
+    color: var(--dim);
+    margin-bottom: 4px;
+  }
+  .sala-head b { color: var(--cyan); font-weight: 700; }
+  .sala-head span { color: #4d5f78; }
+  .sala-list {
+    display: flex; flex-direction: column; gap: 2px;
+    max-height: 92px; overflow: auto;
+  }
+  .sala-row {
+    display: grid;
+    grid-template-columns: 50px 38px 104px minmax(0, 1fr);
+    gap: 6px;
+    align-items: baseline;
+    padding: 2px 4px;
+    border-radius: 5px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: 1.25;
+  }
+  .sala-row.is-new { animation: newRow .9s ease; }
+  @keyframes newRow {
+    0% { background: rgba(34, 211, 238, .22); }
+    100% { background: rgba(34, 211, 238, 0); }
+  }
+  .sala-l { color: var(--cyan); }
+  .sala-origin { color: var(--amber); }
+  .sala-from { color: #93a5bd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sala-body { color: #e6edf7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sala-empty { font-family: var(--mono); font-size: 9.6px; color: #465873; padding: 3px 4px; }
+
+  /* ------------------------------------------------------------- explanation */
+
+  .explain-main {
+    min-width: 0;
+    padding: 10px 16px 11px;
+    border-right: 1px solid var(--line);
+    overflow: auto;
+  }
+  .explain-kicker {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--cyan);
+  }
+  .explain-kicker .concept {
+    color: var(--violet);
+    border: 1px solid rgba(167, 139, 250, .3);
+    background: rgba(167, 139, 250, .07);
+    border-radius: 999px;
+    padding: 1px 7px;
+    margin-left: 8px;
+    letter-spacing: .04em;
+  }
+  .explain-main h2 {
+    margin: 3px 0 4px;
+    font-size: 17px;
+    line-height: 1.2;
+    color: #f4f8ff;
+    font-weight: 700;
+  }
+  .explain-main p {
+    margin: 0;
+    max-width: 110ch;
+    font-size: 12.5px;
+    line-height: 1.52;
+    color: #aab9cf;
+  }
+  .explain-main code {
+    font-family: var(--mono);
+    font-size: 10.8px;
+    color: var(--cyan);
+    background: #08111f;
+    border: 1px solid #1b2a40;
+    border-radius: 4px;
+    padding: 0 4px;
+  }
+  .explain-main strong { color: #eef5ff; font-weight: 600; }
+
+  .explain-log {
+    min-width: 0;
+    padding: 8px 13px 9px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .log-head {
+    flex: 0 0 auto;
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 4px;
+  }
+  .log-head span { letter-spacing: 0; text-transform: none; color: #4d5f78; }
+  #logList {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 2px;
+    overflow: hidden;
+  }
+  .log-row {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    font-family: var(--mono);
+    font-size: 9.8px;
+    line-height: 1.28;
+    color: #8ea1ba;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .log-dot {
+    flex: 0 0 auto;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: #475569;
+    margin-top: 4px;
+  }
+  .log-row.ok .log-dot { background: var(--green); }
+  .log-row.warn .log-dot { background: var(--amber); }
+  .log-row.bad .log-dot { background: var(--red); }
+  .log-row.info .log-dot { background: var(--cyan); }
+
+  /* --------------------------------------------------------------- controls */
+
+  .controls {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px 11px;
+  }
+  .controls button {
+    appearance: none;
+    border: 1px solid var(--line2);
+    background: linear-gradient(180deg, #111d31, #0b1524);
+    color: var(--muted);
+    border-radius: 9px;
+    padding: 7px 11px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+    transition: border-color .2s, color .2s, transform .12s, background .2s;
+    white-space: nowrap;
+  }
+  .controls button:hover { border-color: rgba(34, 211, 238, .5); color: #e8fbff; }
+  .controls button:active { transform: translateY(1px); }
+  .controls button:focus-visible { outline: 2px solid rgba(34, 211, 238, .6); outline-offset: 2px; }
+  .controls button:disabled { opacity: .32; cursor: not-allowed; }
+  .controls button.primary {
+    color: #e8fbff;
+    border-color: rgba(34, 211, 238, .5);
+    background: linear-gradient(135deg, rgba(34, 211, 238, .2), rgba(167, 139, 250, .14));
+    box-shadow: 0 0 24px rgba(34, 211, 238, .08);
+  }
+  .controls button.icon { padding: 7px 9px; font-size: 12px; }
+
+  .progress-wrap { flex: 1 1 auto; min-width: 120px; margin: 0 6px; }
+  .progress {
+    height: 6px;
+    border-radius: 999px;
+    background: #122036;
+    overflow: hidden;
+    cursor: pointer;
+    border: 1px solid #1a2a42;
+  }
+  #progressBar {
+    width: 0;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    box-shadow: 0 0 14px rgba(34, 211, 238, .35);
+    transition: width .35s ease;
+  }
+  .progress-meta {
+    display: flex; justify-content: space-between;
+    margin-top: 3px;
+    font-family: var(--mono);
+    font-size: 8.8px;
+    color: #52657e;
+  }
+  .speed {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--mono);
+    font-size: 9.4px;
+    color: var(--dim);
+    white-space: nowrap;
+  }
+  .speed input { width: 100px; accent-color: var(--cyan); cursor: pointer; }
+
+  /* ---------------------------------------------------------------- overlays */
+
+  .video-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: grid;
+    place-items: center;
+    background:
+      radial-gradient(900px 600px at 50% 35%, rgba(34, 211, 238, .12), transparent 62%),
+      radial-gradient(800px 600px at 70% 70%, rgba(167, 139, 250, .1), transparent 62%),
+      rgba(3, 7, 15, .9);
+    backdrop-filter: blur(10px);
+    transition: opacity .85s ease, visibility .85s;
+  }
+  .video-overlay.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+  .vo-card { max-width: 820px; padding: 42px 46px; text-align: center; }
+  .vo-kicker {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--cyan);
+  }
+  .vo-card h1 {
+    margin: 12px 0 8px;
+    font-size: clamp(34px, 5vw, 66px);
+    line-height: 1.02;
+    letter-spacing: -.02em;
+    background: linear-gradient(120deg, #f8fbff 20%, #9beaf5 55%, #c4b5fd 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .vo-card > p {
+    margin: 0 auto;
+    max-width: 620px;
+    font-size: 16px;
+    line-height: 1.5;
+    color: #9fb0c7;
+  }
+  .vo-tags { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 22px 0 0; }
+  .vo-tags span {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: #c7d6ea;
+    border: 1px solid #24344d;
+    background: rgba(10, 20, 36, .7);
+    padding: 5px 10px;
+    border-radius: 999px;
+  }
+  .vo-hint {
+    margin-top: 30px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--dim);
+    animation: hintPulse 2s ease-in-out infinite;
+  }
+  @keyframes hintPulse { 50% { opacity: .42; } }
+  .vo-list {
+    margin: 24px auto 0;
+    max-width: 700px;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .vo-list div {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    font-size: 13.5px;
+    line-height: 1.45;
+    color: #b9c8dc;
+    border: 1px solid #1c2a40;
+    background: rgba(10, 20, 36, .58);
+    border-radius: 10px;
+    padding: 11px 14px;
+  }
+  .vo-list b { color: var(--cyan); font-family: var(--mono); font-size: 11px; padding-top: 2px; }
+  .vo-list code { font-family: var(--mono); font-size: 11px; color: var(--amber); }
+  .vo-foot {
+    margin-top: 26px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #4d5f78;
+  }
+
+  #cursor {
+    position: fixed;
+    left: 0; top: 0;
+    width: 26px; height: 26px;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0;
+    transition: transform .72s cubic-bezier(.2, .8, .2, 1), opacity .35s ease;
+    filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .65));
+  }
+  #cursor.on { opacity: 1; }
+  #cursor svg { width: 26px; height: 26px; display: block; }
+  #cursor.click svg { animation: cursorClick .28s ease; }
+  @keyframes cursorClick {
+    0%, 100% { transform: scale(1); }
+    45% { transform: scale(.78); }
+  }
+  .click-ripple {
+    position: fixed;
+    width: 18px; height: 18px;
+    border: 2px solid var(--cyan);
+    border-radius: 50%;
+    z-index: 9998;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    animation: ripple .55s ease-out forwards;
+  }
+  @keyframes ripple {
+    0% { opacity: .9; width: 10px; height: 10px; }
+    100% { opacity: 0; width: 56px; height: 56px; }
+  }
+
+  /* --------------------------------------------------------------- responsive */
+
+  @media (max-width: 1120px) {
+    .layout {
+      grid-template-columns: 1fr;
+      grid-template-rows: minmax(0, 42vh) minmax(0, 1fr) minmax(120px, auto);
+    }
+    .code-panel { grid-column: 1; grid-row: 1; }
+    .graph-panel { grid-column: 1; grid-row: 2; }
+    .explain-panel { grid-column: 1; grid-row: 3; grid-template-columns: 1fr; }
+    .explain-log { display: none; }
+    .hud .sep, #clockSummary { display: none; }
+  }
+  @media (max-width: 720px) {
+    .brand p, .legend { display: none; }
+    .var-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .controls { flex-wrap: wrap; }
+    .progress-wrap { order: 10; flex-basis: 100%; margin: 0; }
+    .speed input { width: 74px; }
+  }
+  .tasks rect.task-ok { fill: rgba(52,211,153,.16); stroke: rgba(52,211,153,.55); }
+  .tasks rect.task-fail { fill: rgba(248,113,113,.14); stroke: rgba(248,113,113,.55); }
+  .tasks rect.task-idle { fill: #0a1424; stroke: #1e2c42; }
+  .queue-row { grid-template-columns: 46px 96px 70px minmax(0, 1fr); }
+  .queue-row .sala-origin { color: var(--cyan); }
+  .queue-row .sala-from { color: var(--violet); }
+</style>
+</head>
+<body>
+
+<header id="topbar">
+  <div class="brand">
+    <div class="logo">◇</div>
+    <div>
+      <h1>cliente central <span>· Emerson</span></h1>
+      <p>registro · latido · outbox · backoff + jitter · recuperación</p>
+    </div>
+  </div>
+  <div class="hud">
+    <span class="badge" id="phaseBadge">Arranque</span>
+    <span class="sep"></span>
+    <span id="stepCounter">Paso 1 / 15</span>
+    <span class="sep"></span>
+    <span id="clockSummary">iniciando · outbox 0 · fallos 0</span>
+  </div>
+</header>
+
+<main class="layout">
+
+  <section class="panel code-panel">
+    <div class="panel-head">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <span id="fileName">app/central_client.py</span>
+      <span class="tag">fragmento en ejecución</span>
+    </div>
+    <div class="code-scroll" id="codeScroll">
+      <pre id="codeBlock"></pre>
+    </div>
+    <div class="vars">
+      <div class="vars-head">variables del cliente <span>en este paso</span></div>
+      <div class="var-grid" id="varGrid"></div>
+      <div class="msg-card" id="msgCard"></div>
+    </div>
+  </section>
+
+  <section class="panel graph-panel">
+    <div class="panel-head">
+      <span class="tag">cliente ↔ central</span>
+      <div class="legend">
+        <span><i class="c1"></i>petición</span>
+        <span><i class="c2"></i>respuesta</span>
+        <span><i class="c3"></i>reintento</span>
+        <span><i class="c4"></i>fallo</span>
+      </div>
+    </div>
+    <div class="scene-wrap">
+      <svg id="scene" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Topología del chat distribuido">
+        <defs>
+          <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+            <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#101c2e" stroke-width="1"/>
+          </pattern>
+          <linearGradient id="nodeGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#14233a"/>
+            <stop offset="1" stop-color="#0b1526"/>
+          </linearGradient>
+          <linearGradient id="centralGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#172a43"/>
+            <stop offset="1" stop-color="#0b1829"/>
+          </linearGradient>
+          <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="3.5" result="blur"/>
+            <feMerge>
+              <feMergeNode in="blur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+          </marker>
+          <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#22d3ee"/>
+          </marker>
+          <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#f87171"/>
+          </marker>
+        </defs>
+
+        <rect x="0" y="0" width="1000" height="620" fill="url(#grid)" opacity=".5"/>
+
+        <g id="edges">
+          <path class="edge" data-edge="g3-central" d="M 230 380 C 270 300, 340 230, 420 175" marker-end="url(#arrow)"/>
+          <path class="edge" data-edge="central-g3" d="M 440 175 C 350 240, 290 310, 250 380" marker-end="url(#arrow)"/>
+          <path class="edge" data-edge="g3-sqlite" d="M 380 480 C 460 480, 540 480, 620 480" marker-end="url(#arrow)"/>
+          <path class="edge" data-edge="sqlite-g3" d="M 620 480 C 540 480, 460 480, 380 480" marker-end="url(#arrow)"/>
+        </g>
+
+        <g id="nodes">
+          <!-- ---------------------------------------------------- configuración -->
+          <g class="node cli" id="info-config" transform="translate(20,105)">
+            <rect class="node-bg" width="210" height="118" rx="12"/>
+            <rect class="node-ring" width="210" height="118" rx="12"/>
+            <circle class="status-dot online" id="dot-config" cx="17" cy="17" r="4"/>
+            <text class="cli-title" x="28" y="21">configuración</text>
+            <text class="cli-sub" x="15" y="40">variables de entorno</text>
+            <text class="cli-line" x="15" y="60">GROUP_NAME=g3 · :8001</text>
+            <text class="cli-line" x="15" y="78">REGISTER=10s · HEARTBEAT=5s</text>
+            <text class="cli-line" x="15" y="96">FAILURES=3 · RETRY=1..30s</text>
+            <text class="cli-prompt" x="15" y="114">Configuración congelada</text>
+          </g>
+
+          <!-- ---------------------------------------------------------- central -->
+          <g class="node central" id="node-central" transform="translate(380,45)">
+            <rect class="node-bg" width="240" height="130" rx="18"/>
+            <rect class="node-ring" width="240" height="130" rx="18"/>
+            <circle class="status-dot online" id="dot-central" cx="23" cy="26" r="5"/>
+            <text class="node-title" x="36" y="31">central</text>
+            <text class="node-sub" x="36" y="49">mock · :9000</text>
+            <g class="clock-badge" transform="translate(178,15)">
+              <rect width="46" height="24" rx="8"/>
+              <text x="23" y="17" text-anchor="middle">HTTP</text>
+            </g>
+            <text class="stat-label" x="18" y="82">servidores</text>
+            <text class="stat-value" id="servers-central" x="18" y="108">0</text>
+            <text class="stat-label" x="120" y="82">historial</text>
+            <text class="stat-value" id="hist-central" x="120" y="108">0</text>
+            <text class="node-status ok" id="status-central" x="18" y="124">en línea</text>
+          </g>
+
+          <!-- ------------------------------------------------------------ pruebas -->
+          <g class="node cli" id="info-tests" transform="translate(770,105)">
+            <rect class="node-bg" width="210" height="118" rx="12"/>
+            <rect class="node-ring" width="210" height="118" rx="12"/>
+            <circle class="status-dot" id="dot-tests" cx="17" cy="17" r="4"/>
+            <text class="cli-title" x="28" y="21">pruebas</text>
+            <text class="cli-sub" x="15" y="40">evidencia</text>
+            <text class="cli-line" x="15" y="60">test_backoff.py · 5</text>
+            <text class="cli-line" x="15" y="78">test_config.py · 8</text>
+            <text class="cli-line" x="15" y="96"><tspan id="test-count">0</tspan> propias · 41 totales</text>
+            <text class="cli-prompt" x="15" y="114">docs/PRUEBA_REINTENTOS.md</text>
+          </g>
+
+          <!-- ---------------------------------------------------------------- g3 -->
+          <g class="node server offline" id="node-g3" transform="translate(80,380)">
+            <rect class="node-bg" width="300" height="200" rx="18"/>
+            <rect class="node-ring" width="300" height="200" rx="18"/>
+            <circle class="status-dot" id="dot-g3" cx="23" cy="27" r="5"/>
+            <text class="node-title" x="36" y="32">g3</text>
+            <text class="node-sub" x="36" y="50">ClienteCentral · :8001</text>
+            <g class="clock-badge" id="badge-enlinea" transform="translate(236,15)">
+              <rect width="48" height="24" rx="8"/>
+              <text id="clock-enlinea" x="24" y="17" text-anchor="middle">OFF</text>
+            </g>
+            <g class="tasks" id="tasks-g3">
+              <rect id="task-registro" x="15" y="66" width="84" height="20" rx="6"/>
+              <text x="57" y="80" text-anchor="middle">registro</text>
+              <rect id="task-latido" x="108" y="66" width="84" height="20" rx="6"/>
+              <text x="150" y="80" text-anchor="middle">latido</text>
+              <rect id="task-cola" x="201" y="66" width="84" height="20" rx="6"/>
+              <text x="243" y="80" text-anchor="middle">cola</text>
+            </g>
+            <text class="stat-label" x="15" y="116">outbox</text>
+            <text class="stat-value" id="out-g3" x="15" y="142">0</text>
+            <text class="stat-label" x="128" y="116">intentos</text>
+            <text class="stat-value" id="int-g3" x="128" y="142">0</text>
+            <text class="stat-label" x="241" y="116">marca</text>
+            <text class="stat-value" id="marca-g3" x="241" y="142">0</text>
+            <rect class="bar-bg" x="15" y="152" width="270" height="6" rx="3"/>
+            <rect class="bar-fill" id="bar-g3" x="15" y="152" width="0" height="6" rx="3"/>
+            <text class="node-status" id="status-g3" x="15" y="180">apagado</text>
+          </g>
+
+          <!-- ------------------------------------------------------------- sqlite -->
+          <g class="node server" id="node-sqlite" transform="translate(620,380)">
+            <rect class="node-bg" width="300" height="200" rx="18"/>
+            <rect class="node-ring" width="300" height="200" rx="18"/>
+            <circle class="status-dot online" id="dot-sqlite" cx="23" cy="27" r="5"/>
+            <text class="node-title" x="36" y="32">SQLite</text>
+            <text class="node-sub" x="36" y="50">outbox · mensajes · estado</text>
+            <g class="clock-badge" transform="translate(236,15)">
+              <rect width="48" height="24" rx="8"/>
+              <text x="24" y="17" text-anchor="middle">WAL</text>
+            </g>
+            <text class="stat-label" x="15" y="116">pendientes</text>
+            <text class="stat-value" id="db-pending" x="15" y="142">0</text>
+            <text class="stat-label" x="128" y="116">marca historial</text>
+            <text class="stat-value" id="db-marca" x="128" y="142">0</text>
+            <text class="stat-label" x="241" y="116">fallos</text>
+            <text class="stat-value" id="db-fallos" x="241" y="142">0</text>
+            <text class="node-sub" x="15" y="166">users · messages · outbox · state</text>
+            <text class="node-status" id="status-sqlite" x="15" y="188">datos persistidos</text>
+          </g>
+        </g>
+
+        <g id="callout" class="callout" opacity="0">
+          <rect id="callout-bg" width="220" height="50" rx="10"/>
+          <text class="callout-title" id="callout-title" x="12" y="21"></text>
+          <text class="callout-sub" id="callout-sub" x="12" y="38"></text>
+        </g>
+
+        <g id="packets"></g>
+      </svg>
+    </div>
+    <div class="sala">
+      <div class="sala-head"><b>outbox</b><span>cola persistente · <span id="salaCount">0</span> pendientes</span></div>
+      <div class="sala-list" id="salaList"></div>
+    </div>
+  </section>
+
+  <section class="panel explain-panel">
+    <div class="explain-main">
+      <div class="explain-kicker" id="explainKicker">Paso 1 · Arranque</div>
+      <h2 id="explainTitle">Tres tareas de fondo</h2>
+      <p id="explainDesc">ejecutar() lanza registro, latido y cola en paralelo.</p>
+    </div>
+    <div class="explain-log">
+      <div class="log-head">log de auditoría <span>acumulado</span></div>
+      <div id="logList"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="controls">
+  <button id="btnRestart" class="icon" title="Reiniciar (R)" aria-label="Reiniciar">⟲</button>
+  <button id="btnPrev" title="Anterior (←)" aria-label="Anterior">◀ Anterior</button>
+  <button id="btnPlay" class="primary" title="Reproducir / pausar (Espacio)" aria-label="Reproducir">▶ Reproducir</button>
+  <button id="btnNext" title="Siguiente (→)" aria-label="Siguiente">Siguiente ▶</button>
+  <div class="progress-wrap">
+    <div class="progress" id="progressTrack" title="Ir a un paso"><div id="progressBar"></div></div>
+    <div class="progress-meta"><span id="progressLabel">0%</span><span id="speedLabel">1.0×</span></div>
+  </div>
+  <label class="speed">velocidad <input id="speed" type="range" min="0.5" max="2.5" step="0.25" value="1"></label>
+</footer>
+
+<div id="videoIntro" class="video-overlay hide">
+  <div class="vo-card">
+    <div class="vo-kicker">Sistemas Distribuidos · Proyecto final · Emerson</div>
+    <h1>ClienteCentral</h1>
+    <p>Registro, latido, cola persistente y recuperación: cómo el servidor de grupo sobrevive si el central falla.</p>
+    <div class="vo-tags">
+      <span>3 tareas async</span><span>backoff + jitter</span><span>2xx / 4xx / 5xx</span><span>idempotencia</span><span>historial</span>
+    </div>
+    <div class="vo-hint">▶ La demostración comienza en unos segundos…</div>
+  </div>
+</div>
+
+<div id="videoOutro" class="video-overlay hide">
+  <div class="vo-card">
+    <div class="vo-kicker">Fin de la parte de Emerson</div>
+    <h1>Tres ideas para recordar</h1>
+    <div class="vo-list">
+      <div><b>01</b><span><strong>Tres tareas en paralelo:</strong> registro, latido y cola; <code>en_linea</code> coordina el envío.</span></div>
+      <div><b>02</b><span><strong>Backoff + jitter:</strong> 1, 2, 4… hasta 30 s, con azar para no saturar al central.</span></div>
+      <div><b>03</b><span><strong>Mismo UUID + historial:</strong> reintentar no duplica; al volver, se recupera lo perdido.</span></div>
+    </div>
+    <div class="vo-foot">Gracias · ClienteCentral · g3</div>
+  </div>
+</div>
+
+<div id="cursor" aria-hidden="true">
+  <svg viewBox="0 0 24 24"><path d="M4 2 L20 12 L12.4 13.7 L9.2 21.4 Z" fill="#eef5ff" stroke="#07101c" stroke-width="1.15" stroke-linejoin="round"/></svg>
+</div>
+
+<script>
+/* ==========================================================================
+   Visualización del flujo real del proyecto.
+   Todo es datos + una máquina de estados precalculada: cada paso guarda una
+   copia completa del estado, así retroceder nunca deja la gráfica desfasada.
+   ========================================================================== */
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const $ = (id) => document.getElementById(id);
+const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+
+const S = (file, lines) => ({ file, lines });
+
+/* ------------------------------------------------------------------ código */
+
+const SNIPPETS = {
+  cc_ejecutar: S("app/central_client.py", [
+    [130, "    async def ejecutar(self) -> None:"],
+    [131, "        \"\"\"Crea el cliente HTTP y lanza las tres tareas de fondo."],
+    [132, ""],
+    [133, "        Las tres tareas avanzan en paralelo: mientras una espera la respuesta"],
+    [134, "        del central, las otras pueden seguir trabajando."],
+    [135, "        \"\"\""],
+    [136, "        # Tiempo máximo que se espera cualquier petición al central."],
+    [137, "        tiempo_espera = httpx.Timeout(self.configuracion.segundos_espera_peticion)"],
+    [138, ""],
+    [139, "        # \"async with\" abre el cliente HTTP y lo cierra al terminar."],
+    [140, "        async with httpx.AsyncClient(timeout=tiempo_espera) as cliente:"],
+    [141, "            self._cliente_http = cliente"],
+    [142, ""],
+    [143, "            # Cada tarea se guarda en una lista para poder cancelarlas todas"],
+    [144, "            # cuando el servidor se apague. Sin esto, una tarea podría quedar"],
+    [145, "            # corriendo sola en segundo plano."],
+    [146, "            tareas = ["],
+    [147, "                asyncio.create_task(self._bucle_registro(), name=\"registro-central\"),"],
+    [148, "                asyncio.create_task(self._bucle_latido(), name=\"latido-central\"),"],
+    [149, "                asyncio.create_task(self._bucle_cola_salida(), name=\"cola-central\"),"],
+    [150, "            ]"],
+    [151, ""],
+    [152, "            try:"],
+    [153, "                # Espera a que las tres terminen. Solo terminan cuando se pide"],
+    [154, "                # el apagado o cuando ocurre un error inesperado."],
+    [155, "                await asyncio.gather(*tareas)"],
+    [156, "            finally:"],
+    [157, "                # Apagado ordenado: se cancelan y se espera a que suelten."],
+    [158, "                for tarea in tareas:"],
+    [159, "                    tarea.cancel()"],
+    [160, "                await asyncio.gather(*tareas, return_exceptions=True)"],
+    [161, "                self._cliente_http = None"],
+  ]),
+  config_cargar: S("app/config.py", [
+    [199, "    # --- Tiempos de reintento --------------------------------------------"],
+    [200, "    # El máximo no puede ser menor que la base: no tendría sentido que el"],
+    [201, "    # primer reintento esperara más que el tope."],
+    [202, "    segundos_base_reintento = leer_variable_decimal(\"RETRY_BASE_SECONDS\", 1.0)"],
+    [203, "    segundos_maximos_reintento = leer_variable_decimal(\"RETRY_MAX_SECONDS\", 30.0)"],
+    [204, ""],
+    [205, "    if segundos_maximos_reintento < segundos_base_reintento:"],
+    [206, "        raise ValueError("],
+    [207, "            \"RETRY_MAX_SECONDS debe ser mayor o igual a RETRY_BASE_SECONDS\""],
+    [208, "        )"],
+    [209, ""],
+    [210, "    # --- Objeto final -----------------------------------------------------"],
+    [211, "    # Se construye una sola vez y queda congelado (frozen=True)."],
+    [212, "    return Configuracion("],
+    [213, "        nombre_grupo=nombre_grupo,"],
+    [214, "        url_publica=url_publica,"],
+    [215, "        url_central=url_central,"],
+    [216, "        puerto=puerto,"],
+    [217, "        ruta_base_datos=leer_variable_texto(\"DB_PATH\", \"./data/chat.db\"),"],
+    [218, "        segundos_entre_registros=leer_variable_decimal("],
+    [219, "            \"REGISTER_INTERVAL_SECONDS\", 10.0"],
+    [220, "        ),"],
+    [221, "        segundos_entre_latidos=leer_variable_decimal(\"HEARTBEAT_INTERVAL_SECONDS\", 5.0),"],
+    [222, "        segundos_espera_latido=leer_variable_decimal(\"HEARTBEAT_TIMEOUT_SECONDS\", 3.0),"],
+    [223, "        fallos_latido_para_caida=leer_variable_entera(\"HEARTBEAT_FAILURES\", 3),"],
+    [224, "        segundos_espera_peticion=leer_variable_decimal(\"REQUEST_TIMEOUT_SECONDS\", 5.0),"],
+    [225, "        segundos_base_reintento=segundos_base_reintento,"],
+    [226, "        segundos_maximos_reintento=segundos_maximos_reintento,"],
+    [227, "        nivel_registro=leer_variable_texto(\"LOG_LEVEL\", \"INFO\").upper(),"],
+    [228, "    )"],
+  ]),
+  cc_registro: S("app/central_client.py", [
+    [210, "    async def _registrar_una_vez(self) -> bool:"],
+    [211, "        \"\"\"Hace un único ``POST /register`` y dice si el central lo aceptó."],
+    [212, ""],
+    [213, "        El cuerpo es exactamente el que pide el enunciado:"],
+    [214, "        ``{\"server\": \"g3\", \"url\": \"http://...\"}``."],
+    [215, "        \"\"\""],
+    [216, "        if self._cliente_http is None:"],
+    [217, "            return False"],
+    [218, ""],
+    [219, "        cuerpo = SolicitudRegistro("],
+    [220, "            server=self.configuracion.nombre_grupo,"],
+    [221, "            url=self.configuracion.url_publica,"],
+    [222, "        ).model_dump()"],
+    [223, ""],
+    [224, "        try:"],
+    [225, "            respuesta = await self._cliente_http.post("],
+    [226, "                f\"{self.configuracion.url_central}/register\","],
+    [227, "                json=cuerpo,"],
+    [228, "            )"],
+    [229, "        except httpx.HTTPError as error:"],
+    [230, "            # No hubo respuesta: red caída, tiempo agotado, etc."],
+    [231, "            registrar_evento("],
+    [232, "                \"REGISTRO_FALLO\","],
+    [233, "                motivo=type(error).__name__,"],
+    [234, "                central=self.configuracion.url_central,"],
+    [235, "            )"],
+    [236, "            return False"],
+    [237, ""],
+    [238, "        # Cualquier código entre 200 y 299 significa que fue aceptado."],
+    [239, "        if 200 <= respuesta.status_code < 300:"],
+    [240, "            registrar_evento("],
+    [241, "                \"REGISTRO_OK\","],
+    [242, "                servidor=self.configuracion.nombre_grupo,"],
+    [243, "                url=self.configuracion.url_publica,"],
+    [244, "            )"],
+    [245, "            return True"],
+    [246, ""],
+    [247, "        registrar_evento(\"REGISTRO_FALLO\", status=respuesta.status_code)"],
+    [248, "        return False"],
+  ]),
+  cc_historial: S("app/central_client.py", [
+    [382, "        # Última marca de historial que quedó guardada."],
+    [383, "        marca_guardada = int("],
+    [384, "            self.base_datos.obtener_estado(\"last_history_lamport\", \"0\") or 0"],
+    [385, "        )"],
+    [386, ""],
+    [387, "        # En el arranque se pide todo; en una reconexión, solo lo nuevo."],
+    [388, "        if self._sincronizacion_inicial:"],
+    [389, "            desde = 0"],
+    [390, "            modo = \"completa\""],
+    [391, "        else:"],
+    [392, "            desde = max(0, marca_guardada - 1)"],
+    [393, "            modo = \"incremental\""],
+    [394, ""],
+    [395, "        registrar_evento("],
+    [396, "            \"HISTORIAL_INICIO\","],
+    [397, "            modo=modo,"],
+    [398, "            desde=desde,"],
+    [399, "            ultima_marca=marca_guardada,"],
+    [400, "        )"],
+    [406, "        for intento in range(1, self._INTENTOS_SINCRONIZACION + 1):"],
+    [407, "            try:"],
+    [408, "                respuesta = await self._cliente_http.get("],
+    [409, "                    f\"{self.configuracion.url_central}/history\","],
+    [410, "                    params={\"since\": desde},"],
+    [411, "                )"],
+  ]),
+  cc_cola: S("app/central_client.py", [
+    [545, "    async def _bucle_cola_salida(self) -> None:"],
+    [546, "        \"\"\"Envía los mensajes pendientes cuando el central está disponible."],
+    [547, ""],
+    [548, "        La cola vive en SQLite (tabla ``outbox``). Un mensaje sale de la cola"],
+    [549, "        SOLO cuando el central confirma con 2xx. Si el servidor se reinicia,"],
+    [550, "        los pendientes siguen ahí y se reintentan con el mismo UUID."],
+    [551, "        \"\"\""],
+    [552, "        while not self._detenido:"],
+    [553, "            if not self.en_linea or self._cliente_http is None:"],
+    [554, "                # Central caído: los mensajes se quedan guardados y se espera."],
+    [555, "                await asyncio.sleep(0.5)"],
+    [556, "                continue"],
+    [557, ""],
+    [558, "            try:"],
+    [559, "                # Mensajes cuyo próximo intento ya venció."],
+    [560, "                pendientes = self.base_datos.obtener_cola_pendiente("],
+    [561, "                    time.time(), limite=20"],
+    [562, "                )"],
+    [563, "            except Exception as error:  # noqa: BLE001"],
+    [564, "                # Una tarea de fondo no debe morir por un error de lectura."],
+    [565, "                registrar_error(\"ERROR\", \"no se pudo leer la cola\", detalle=repr(error))"],
+    [566, "                await asyncio.sleep(1.0)"],
+    [567, "                continue"],
+    [568, ""],
+    [569, "            if not pendientes:"],
+    [570, "                # No hay nada para enviar: se revisa de nuevo en medio segundo."],
+    [571, "                await asyncio.sleep(0.5)"],
+    [572, "                continue"],
+    [573, ""],
+    [574, "            for elemento in pendientes:"],
+    [575, "                # Se comprueba otra vez por si el central se cayó a mitad."],
+    [576, "                if self._detenido or not self.en_linea:"],
+    [577, "                    break"],
+    [578, "                await self._enviar_elemento_cola(elemento)"],
+    [579, ""],
+    [580, "            await asyncio.sleep(0.1)"],
+  ]),
+  cc_envio_ok: S("app/central_client.py", [
+    [595, "        mensaje = elemento.mensaje"],
+    [596, "        intento = elemento.intentos + 1"],
+    [597, ""],
+    [598, "        registrar_evento("],
+    [599, "            \"ENVÍO\","],
+    [600, "            destino=\"central\","],
+    [601, "            id=mensaje.id,"],
+    [602, "            lamport=mensaje.lamport,"],
+    [603, "            intento=intento,"],
+    [604, "        )"],
+    [605, ""],
+    [606, "        try:"],
+    [607, "            respuesta = await self._cliente_http.post("],
+    [608, "                f\"{self.configuracion.url_central}/messages\","],
+    [609, "                json=mensaje.a_diccionario_protocolo(),"],
+    [610, "            )"],
+    [611, "        except httpx.HTTPError as error:"],
+    [612, "            # Sin respuesta: el mensaje sigue en la cola y se reintentará más"],
+    [613, "            # tarde con el MISMO id."],
+    [614, "            self._programar_reintento("],
+    [615, "                mensaje,"],
+    [616, "                elemento.intentos,"],
+    [617, "                type(error).__name__,"],
+    [618, "            )"],
+    [619, "            return"],
+    [620, ""],
+    [621, "        if 200 <= respuesta.status_code < 300:"],
+    [622, "            # Confirmado. Solo ahora se quita de la cola: si el proceso muere"],
+    [623, "            # justo antes, al reiniciar se reenvía con el mismo id y el central"],
+    [624, "            # lo deduplica."],
+    [625, "            self.base_datos.quitar_de_cola(mensaje.id)"],
+    [626, "            registrar_evento("],
+    [627, "                \"ENVÍO_OK\","],
+    [628, "                id=mensaje.id,"],
+    [629, "                lamport=mensaje.lamport,"],
+    [630, "                status=respuesta.status_code,"],
+    [631, "            )"],
+    [632, "            return"],
+  ]),
+  cc_4xx: S("app/central_client.py", [
+    [634, "        if 400 <= respuesta.status_code < 500:"],
+    [635, "            # El protocolo dice que un 4xx no se reintenta: el error está en el"],
+    [636, "            # mensaje. Se descarta y se deja rastro en el log."],
+    [637, "            self.base_datos.quitar_de_cola(mensaje.id)"],
+    [638, "            registrar_evento("],
+    [639, "                \"DESCARTE_4XX\","],
+    [640, "                id=mensaje.id,"],
+    [641, "                lamport=mensaje.lamport,"],
+    [642, "                status=respuesta.status_code,"],
+    [643, "                detalle=respuesta.text[:160].replace(\"\\n\", \" \"),"],
+    [644, "            )"],
+    [645, "            return"],
+  ]),
+  cc_reintento: S("app/central_client.py", [
+    [647, "        # 5xx: el central falló temporalmente. Se reprograma el reintento."],
+    [648, "        self._programar_reintento("],
+    [649, "            mensaje,"],
+    [650, "            elemento.intentos,"],
+    [651, "            f\"HTTP {respuesta.status_code}\","],
+    [652, "        )"],
+    [666, "        intentos = intentos_previos + 1"],
+    [667, ""],
+    [668, "        espera = calcular_espera_reintento("],
+    [669, "            intentos,"],
+    [670, "            self.configuracion.segundos_base_reintento,"],
+    [671, "            self.configuracion.segundos_maximos_reintento,"],
+    [672, "        )"],
+    [673, "        proximo_intento_en = time.time() + espera"],
+    [674, ""],
+    [675, "        self.base_datos.programar_reintento_cola("],
+    [676, "            mensaje.id,"],
+    [677, "            intentos,"],
+    [678, "            proximo_intento_en,"],
+    [679, "        )"],
+  ]),
+  cc_backoff: S("app/central_client.py", [
+    [49, "def calcular_espera_reintento("],
+    [50, "    intento_actual: int, segundos_base: float, segundos_maximos: float"],
+    [51, ") -> float:"],
+    [52, "    \"\"\"Devuelve cuántos segundos esperar antes del próximo reintento."],
+    [53, ""],
+    [54, "    Recibe:"],
+    [55, ""],
+    [56, "    - ``intento_actual``: número del intento que acaba de fallar (empieza en 1)."],
+    [57, "    - ``segundos_base``: espera del primer reintento (por defecto 1 segundo)."],
+    [58, "    - ``segundos_maximos``: tope máximo permitido (por defecto 30 segundos)."],
+    [59, ""],
+    [60, "    La espera crece con cada intento para no saturar al central con reintentos"],
+    [61, "    inmediatos. Además se le suma una variación aleatoria de ±50 % para que"],
+    [62, "    varios grupos no reintenten exactamente al mismo tiempo."],
+    [63, ""],
+    [64, "    Ejemplo con base 1 y máximo 30:"],
+    [65, ""],
+    [66, "    - intento 1 -> alrededor de 1 segundo,"],
+    [67, "    - intento 2 -> alrededor de 2 segundos,"],
+    [68, "    - intento 3 -> alrededor de 4 segundos,"],
+    [69, "    - ... hasta llegar al tope de 30 segundos."],
+    [70, "    \"\"\""],
+    [71, "    # 2 ** (intento - 1) duplica el valor en cada intento: 1, 2, 4, 8..."],
+    [72, "    # max(0, ...) evita un exponente negativo si llegara un intento inválido."],
+    [73, "    # min(..., segundos_maximos) impone el tope desde el principio."],
+    [74, "    espera_exponencial = min("],
+    [75, "        segundos_maximos,"],
+    [76, "        segundos_base * (2 ** max(0, intento_actual - 1)),"],
+    [77, "    )"],
+    [78, ""],
+    [79, "    # Variación aleatoria (\"jitter\"): en vez de esperar exactamente el valor"],
+    [80, "    # calculado, se espera algo entre la mitad y el doble y medio."],
+    [81, "    espera_con_azar = random.uniform("],
+    [82, "        espera_exponencial * 0.5,"],
+    [83, "        espera_exponencial * 1.5,"],
+    [84, "    )"],
+    [85, ""],
+    [86, "    # El azar tampoco debe superar el tope configurado."],
+    [87, "    return min(segundos_maximos, espera_con_azar)"],
+  ]),
+  cc_latido: S("app/central_client.py", [
+    [265, "        while not self._detenido:"],
+    [266, "            saludable = await self._consultar_salud()"],
+    [267, ""],
+    [268, "            if saludable:"],
+    [269, "                fallos = 0"],
+    [270, ""],
+    [271, "                if not self.en_linea:"],
+    [272, "                    # Primer contacto o regreso de una caída: antes de volver"],
+    [273, "                    # a enviar, se recupera lo que nos perdimos."],
+    [274, "                    await self._recuperar()"],
+    [275, "            else:"],
+    [276, "                fallos += 1"],
+    [277, ""],
+    [278, "                if ("],
+    [279, "                    self.en_linea"],
+    [280, "                    and fallos >= self.configuracion.fallos_latido_para_caida"],
+    [281, "                ):"],
+    [282, "                    # Varios fallos seguidos: se declara caído. La cola de"],
+    [283, "                    # salida dejará de intentar enviar."],
+    [284, "                    self.en_linea = False"],
+    [285, "                    registrar_evento("],
+    [286, "                        \"CAÍDA_CENTRAL\","],
+    [287, "                        intentos_fallidos=fallos,"],
+    [288, "                        mensajes_pendientes=self.base_datos.contar_pendientes(),"],
+    [289, "                    )"],
+    [290, "                elif ("],
+    [291, "                    not self.en_linea"],
+    [292, "                    and fallos == self.configuracion.fallos_latido_para_caida"],
+    [293, "                ):"],
+    [294, "                    # Ya estaba caído: se registra una sola vez para no llenar"],
+    [295, "                    # el log con el mismo aviso cada pocos segundos."],
+    [296, "                    registrar_evento("],
+    [297, "                        \"CENTRAL_NO_DISPONIBLE\","],
+    [298, "                        intentos_fallidos=fallos,"],
+    [299, "                        nota=\"se sigue consultando el latido\","],
+    [300, "                    )"],
+    [301, ""],
+    [302, "            await asyncio.sleep(self.configuracion.segundos_entre_latidos)"],
+  ]),
+  cc_caida: S("app/central_client.py", [
+    [278, "                if ("],
+    [279, "                    self.en_linea"],
+    [280, "                    and fallos >= self.configuracion.fallos_latido_para_caida"],
+    [281, "                ):"],
+    [282, "                    # Varios fallos seguidos: se declara caído. La cola de"],
+    [283, "                    # salida dejará de intentar enviar."],
+    [284, "                    self.en_linea = False"],
+    [285, "                    registrar_evento("],
+    [286, "                        \"CAÍDA_CENTRAL\","],
+    [287, "                        intentos_fallidos=fallos,"],
+    [288, "                        mensajes_pendientes=self.base_datos.contar_pendientes(),"],
+    [289, "                    )"],
+    [290, "                elif ("],
+    [291, "                    not self.en_linea"],
+    [292, "                    and fallos == self.configuracion.fallos_latido_para_caida"],
+    [293, "                ):"],
+    [294, "                    # Ya estaba caído: se registra una sola vez para no llenar"],
+    [295, "                    # el log con el mismo aviso cada pocos segundos."],
+    [296, "                    registrar_evento("],
+    [297, "                        \"CENTRAL_NO_DISPONIBLE\","],
+    [298, "                        intentos_fallidos=fallos,"],
+    [299, "                        nota=\"se sigue consultando el latido\","],
+    [300, "                    )"],
+  ]),
+  cc_recuperar: S("app/central_client.py", [
+    [328, "    async def _recuperar(self) -> None:"],
+    [329, "        \"\"\"Renueva el registro y sincroniza el historial antes de volver a enviar."],
+    [330, ""],
+    [331, "        El orden es importante:"],
+    [332, ""],
+    [333, "        1. Renovar el registro (el central pudo reiniciarse y olvidarnos)."],
+    [334, "        2. Pedir el historial que nos perdimos."],
+    [335, "        3. Solo entonces marcar ``en_linea = True``."],
+    [336, ""],
+    [337, "        Si la sincronización falla, se sigue \"caído\" y se intenta de nuevo en"],
+    [338, "        el siguiente latido. Es mejor no enviar a ciegas y arriesgar un"],
+    [339, "        historial incompleto."],
+    [340, "        \"\"\""],
+    [341, "        if self._detenido:"],
+    [342, "            return"],
+    [343, ""],
+    [344, "        registrar_evento(\"RECUPERACIÓN_INICIO\", central=self.configuracion.url_central)"],
+    [345, ""],
+    [346, "        # 1. Renovar el registro es barato e idempotente."],
+    [347, "        await self._registrar_una_vez()"],
+    [348, ""],
+    [349, "        # 2. Traer el historial perdido."],
+    [350, "        if not await self._sincronizar_historial():"],
+    [351, "            registrar_evento("],
+    [352, "                \"RECUPERACIÓN_FALLO\","],
+    [353, "                nota=\"se reintentará en el próximo latido\","],
+    [354, "            )"],
+    [355, "            return"],
+    [356, ""],
+    [357, "        # 3. Recién ahora se permite enviar otra vez."],
+    [358, "        self.en_linea = True"],
+    [359, "        registrar_evento("],
+    [360, "            \"RECUPERACIÓN_OK\","],
+    [361, "            lamport=self.reloj.valor,"],
+    [362, "            pendientes=self.base_datos.contar_pendientes(),"],
+    [363, "        )"],
+  ]),
+  cc_pruebas: S("tests/test_backoff.py", [
+    [17, "class PruebasEsperaReintento(unittest.TestCase):"],
+    [18, "    def test_crece_con_cada_intento(self):"],
+    [19, "        # Con base 1 y tope 30, el intento n espera alrededor de 1, 2, 4..."],
+    [20, "        # El azar de ±50 % se refleja en los intervalos de abajo."],
+    [21, "        self.assertGreaterEqual(calcular_espera_reintento(1, 1.0, 30.0), 0.5)"],
+    [22, "        self.assertLessEqual(calcular_espera_reintento(1, 1.0, 30.0), 1.5)"],
+    [23, ""],
+    [24, "        self.assertGreaterEqual(calcular_espera_reintento(2, 1.0, 30.0), 1.0)"],
+    [25, "        self.assertLessEqual(calcular_espera_reintento(2, 1.0, 30.0), 3.0)"],
+    [26, ""],
+    [27, "        self.assertGreaterEqual(calcular_espera_reintento(3, 1.0, 30.0), 2.0)"],
+    [28, "        self.assertLessEqual(calcular_espera_reintento(3, 1.0, 30.0), 6.0)"],
+    [39, "    def test_nunca_supera_el_tope(self):"],
+    [40, "        # Sin el segundo min(), el azar de +50 % superaría el tope."],
+    [41, "        for intento in range(1, 100):"],
+    [42, "            espera = calcular_espera_reintento(intento, 1.0, 30.0)"],
+    [43, "            self.assertLessEqual(espera, 30.0)"],
+    [44, "            self.assertGreater(espera, 0.0)"],
+    [45, ""],
+    [46, "    def test_tiene_azar(self):"],
+    [47, "        valores = {calcular_espera_reintento(3, 1.0, 30.0) for _ in range(20)}"],
+    [48, "        self.assertGreater(len(valores), 1)"],
+  ]),
+  summary: S("Resumen del módulo", [
+    [1, "Tres tareas: registro, latido y cola."],
+    [2, "en_linea coordina el envío."],
+    [3, "2xx -> borrar de la outbox."],
+    [4, "4xx -> descartar sin reintentar."],
+    [5, "5xx/red -> backoff + jitter, mismo UUID."],
+    [6, "Al volver: registro + historial + drenar."],
+  ]),
+};
+
+const RAW_STEPS = [
+  {
+    "phase": "Arranque",
+    "title": "Tres tareas de fondo",
+    "concept": "asyncio · concurrencia",
+    "desc": "<code>ejecutar()</code> crea el <code>httpx.AsyncClient</code> y lanza <strong>registro</strong>, <strong>latido</strong> y <strong>cola</strong>. Las tres corren en paralelo y se cancelan juntas al apagar.",
+    "snippet": "cc_ejecutar",
+    "active": [
+      146,
+      147,
+      148,
+      149,
+      150
+    ],
+    "patch": {
+      "g3": {
+        "online": true,
+        "status": "cliente iniciado"
+      },
+      "loops": {
+        "registro": "esperando",
+        "latido": "esperando",
+        "cola": "esperando"
+      }
+    },
+    "newLogs": [
+      "[ARRANQUE] ClienteCentral.ejecutar()",
+      "[ARRANQUE] 3 tareas de fondo"
+    ],
+    "focus": [
+      "central",
+      "g3"
+    ],
+    "edges": [],
+    "hold": 6000
+  },
+  {
+    "phase": "Configuración",
+    "title": "La configuración se valida al arrancar",
+    "concept": "config.py",
+    "desc": "<code>cargar_configuracion()</code> lee variables de entorno, valida URLs y tiempos, y devuelve un objeto <code>Configuracion</code> congelado. Si algo está mal, el servidor no arranca.",
+    "snippet": "config_cargar",
+    "active": [
+      202,
+      203,
+      218,
+      219,
+      220,
+      221,
+      222,
+      223
+    ],
+    "patch": {
+      "g3": {
+        "status": "config congelada"
+      },
+      "config": {
+        "registro": 10,
+        "latido": 5,
+        "caida": 3,
+        "base": 1,
+        "max": 30
+      }
+    },
+    "newLogs": [
+      "[CONFIG] GROUP_NAME=g3",
+      "[CONFIG] retry=1..30s · latido=5s · caída=3"
+    ],
+    "focus": [
+      "g3",
+      "config"
+    ],
+    "hold": 6500
+  },
+  {
+    "phase": "Registro",
+    "title": "POST /register cada 10 s",
+    "concept": "registro idempotente",
+    "desc": "<code>_registrar_una_vez</code> envía <code>{server, url}</code>. El bucle repite el registro porque el central puede reiniciarse y olvidar la lista. Registrar dos veces solo actualiza la dirección.",
+    "snippet": "cc_registro",
+    "active": [
+      219,
+      220,
+      221,
+      222,
+      225,
+      226,
+      227,
+      239,
+      240,
+      241
+    ],
+    "patch": {
+      "central": {
+        "servers": 1
+      },
+      "loops": {
+        "registro": "ok"
+      },
+      "g3": {
+        "status": "registrado"
+      }
+    },
+    "newLogs": [
+      "[REGISTRO_OK] servidor=g3",
+      "[REGISTRO] próximo en ~10 s"
+    ],
+    "packets": [
+      {
+        "edge": "g3-central",
+        "kind": "request",
+        "label": "POST /register",
+        "delay": 100
+      },
+      {
+        "edge": "central-g3",
+        "kind": "response",
+        "label": "200 OK",
+        "delay": 1000
+      }
+    ],
+    "edges": [
+      "g3-central",
+      "central-g3"
+    ],
+    "focus": [
+      "g3",
+      "central"
+    ],
+    "hold": 6500
+  },
+  {
+    "phase": "Historial",
+    "title": "Sincronización inicial: GET /history?since=0",
+    "concept": "antes de enviar",
+    "desc": "El cliente pide el historial completo (<code>desde=0</code>). Guarda los mensajes nuevos, descarta duplicados por UUID, actualiza <code>last_history_lamport</code> y solo entonces <code>en_linea = true</code>.",
+    "snippet": "cc_historial",
+    "active": [
+      383,
+      384,
+      385,
+      388,
+      389,
+      390,
+      406,
+      407,
+      408,
+      409,
+      410,
+      411,
+      530,
+      531,
+      532
+    ],
+    "patch": {
+      "g3": {
+        "enLinea": true,
+        "marca": 0,
+        "status": "en línea"
+      },
+      "loops": {
+        "latido": "ok"
+      }
+    },
+    "newLogs": [
+      "[HISTORIAL_INICIO] modo=completa desde=0",
+      "[HISTORIAL_SINCRONIZADO] desde=0 nuevos=0"
+    ],
+    "packets": [
+      {
+        "edge": "g3-central",
+        "kind": "request",
+        "label": "GET /history?since=0",
+        "delay": 100
+      },
+      {
+        "edge": "central-g3",
+        "kind": "response",
+        "label": "historial · 0",
+        "delay": 1000
+      }
+    ],
+    "edges": [
+      "g3-central",
+      "central-g3"
+    ],
+    "focus": [
+      "g3",
+      "central"
+    ],
+    "bump": [
+      "enlinea"
+    ],
+    "hold": 6500
+  },
+  {
+    "phase": "Outbox",
+    "title": "La cola persistente despierta",
+    "concept": "outbox en SQLite",
+    "desc": "La tarea de la cola lee SQLite cada 0.5 s. Si <code>en_linea</code> es False, no envía; si hay pendientes, llama a <code>_enviar_elemento_cola</code> uno por uno.",
+    "snippet": "cc_cola",
+    "active": [
+      552,
+      553,
+      554,
+      555,
+      560,
+      561,
+      562,
+      569,
+      570,
+      571,
+      574,
+      575,
+      576,
+      577,
+      578
+    ],
+    "patch": {
+      "g3": {
+        "outbox": 1,
+        "status": "cola: 1 pendiente"
+      },
+      "loops": {
+        "cola": "activa"
+      },
+      "queue": [
+        {
+          "id": "6f1c9a2b",
+          "lamport": 1,
+          "intentos": 0,
+          "espera": 0
+        }
+      ]
+    },
+    "newLogs": [
+      "[COLA] pendiente id=6f1c9a2b lamport=1",
+      "[ENVÍO] destino=central intento=1"
+    ],
+    "packets": [
+      {
+        "edge": "g3-central",
+        "kind": "request",
+        "label": "POST /messages",
+        "delay": 100
+      }
+    ],
+    "edges": [
+      "g3-central"
+    ],
+    "focus": [
+      "g3",
+      "sqlite"
+    ],
+    "hold": 6000
+  },
+  {
+    "phase": "Respuesta 2xx",
+    "title": "2xx: se borra de la cola",
+    "concept": "entrega al menos una vez",
+    "desc": "El central acepta con 2xx. Solo ahora <code>quitar_de_cola</code> elimina el mensaje. Si el proceso muere antes, al reiniciar se reenvía con el mismo UUID y el central lo deduplica.",
+    "snippet": "cc_envio_ok",
+    "active": [
+      621,
+      622,
+      623,
+      624,
+      625,
+      626,
+      627,
+      628,
+      629,
+      630,
+      631
+    ],
+    "patch": {
+      "g3": {
+        "outbox": 0,
+        "intentos": 0,
+        "espera": 0,
+        "status": "en línea"
+      },
+      "central": {
+        "history": 1
+      },
+      "queue": [],
+      "loops": {
+        "cola": "ok"
+      }
+    },
+    "newLogs": [
+      "[ENVÍO] id=6f1c9a2b lamport=1 intento=1",
+      "[ENVÍO_OK] id=6f1c9a2b status=201"
+    ],
+    "packets": [
+      {
+        "edge": "g3-central",
+        "kind": "request",
+        "label": "POST /messages",
+        "delay": 100
+      },
+      {
+        "edge": "central-g3",
+        "kind": "response",
+        "label": "201",
+        "delay": 1000
+      }
+    ],
+    "edges": [
+      "g3-central",
+      "central-g3"
+    ],
+    "focus": [
+      "g3",
+      "central"
+    ],
+    "hold": 6000
+  },
+  {
+    "phase": "Respuesta 4xx",
+    "title": "4xx: no se reintenta",
+    "concept": "error del mensaje",
+    "desc": "Un 4xx es un error del mensaje, no del central. El cliente lo descarta y deja <code>DESCARTE_4XX</code> en el log. Limitación: el mensaje queda en el historial local, pero no se reintenta.",
+    "snippet": "cc_4xx",
+    "active": [
+      634,
+      635,
+      636,
+      637,
+      638,
+      639,
+      640,
+      641,
+      642,
+      643
+    ],
+    "patch": {
+      "g3": {
+        "outbox": 0,
+        "status": "descartó 4xx"
+      },
+      "central": {
+        "note": "4xx · no reintentar"
+      },
+      "queue": []
+    },
+    "newLogs": [
+      "[DESCARTE_4XX] id=6f1c9a2b status=422",
+      "[COLA] 0 pendientes"
+    ],
+    "packets": [
+      {
+        "edge": "central-g3",
+        "kind": "fail",
+        "label": "422",
+        "delay": 100
+      }
+    ],
+    "edges": [
+      "central-g3"
+    ],
+    "failEdges": [
+      "central-g3"
+    ],
+    "focus": [
+      "g3",
+      "central"
+    ],
+    "hold": 6500
+  },
+  {
+    "phase": "Respuesta 5xx",
+    "title": "5xx o red: se reprograma el reintento",
+    "concept": "reintento persistente",
+    "desc": "Un 5xx o un error de red es temporal. <code>_programar_reintento</code> incrementa <code>intentos</code>, calcula la espera y guarda en SQLite la hora del próximo intento. El UUID no cambia.",
+    "snippet": "cc_reintento",
+    "active": [
+      666,
+      667,
+      668,
+      669,
+      670,
+      671,
+      672,
+      673,
+      674,
+      675,
+      676,
+      677,
+      678,
+      679
+    ],
+    "patch": {
+      "g3": {
+        "outbox": 1,
+        "intentos": 1,
+        "espera": 1.05,
+        "status": "reintentando"
+      },
+      "central": {
+        "note": "error temporal 500"
+      },
+      "queue": [
+        {
+          "id": "6f1c9a2b",
+          "lamport": 1,
+          "intentos": 1,
+          "espera": 1.05
+        }
+      ]
+    },
+    "newLogs": [
+      "[REINTENTO] id=6f1c9a2b intento_fallido=1 espera=1.05 motivo=HTTP 500"
+    ],
+    "packets": [
+      {
+        "edge": "g3-central",
+        "kind": "request",
+        "label": "POST /messages",
+        "delay": 100
+      },
+      {
+        "edge": "central-g3",
+        "kind": "fail",
+        "label": "500",
+        "delay": 900
+      },
+      {
+        "edge": "g3-central",
+        "kind": "retry",
+        "label": "retry 1.05 s",
+        "delay": 1600
+      }
+    ],
+    "edges": [
+      "g3-central",
+      "central-g3"
+    ],
+    "failEdges": [
+      "central-g3"
+    ],
+    "focus": [
+      "g3",
+      "central"
+    ],
+    "hold": 7000
+  },
+  {
+    "phase": "Backoff",
+    "title": "Espera exponencial + jitter",
+    "concept": "1, 2, 4… hasta 30 s",
+    "desc": "La espera base se duplica: 1, 2, 4, 8… hasta el tope de 30 s. El jitter de ±50 % evita que todos los grupos reintenten al mismo tiempo cuando el central vuelve.",
+    "snippet": "cc_backoff",
+    "active": [
+      74,
+      75,
+      76,
+      81,
+      82,
+      83,
+      84,
+      87
+    ],
+    "patch": {
+      "g3": {
+        "intentos": 2,
+        "espera": 2.1,
+        "status": "espera 2.10 s"
+      },
+      "queue": [
+        {
+          "id": "6f1c9a2b",
+          "lamport": 1,
+          "intentos": 2,
+          "espera": 2.1
+        }
+      ]
+    },
+    "newLogs": [
+      "[BACKOFF] intento=1 espera≈1.05",
+      "[BACKOFF] intento=2 espera≈2.10",
+      "[BACKOFF] tope=30"
+    ],
+    "callout": {
+      "node": "g3",
+      "title": "min(30, 1 · 2^(n-1))",
+      "sub": "× jitter uniforme [0.5, 1.5]"
+    },
+    "focus": [
+      "g3"
+    ],
+    "hold": 7000
+  },
+  {
+    "phase": "Latido",
+    "title": "GET /health cada 5 s",
+    "concept": "latido consultado",
+    "desc": "El latido es consultado: nosotros preguntamos. Si responde y <code>en_linea</code> es False, se llama a <code>_recuperar</code>. Si falla, se acumula un fallo.",
+    "snippet": "cc_latido",
+    "active": [
+      266,
+      267,
+      268,
+      269,
+      270,
+      271,
+      272,
+      273,
+      274
+    ],
+    "patch": {
+      "central": {
+        "online": true,
+        "note": "en línea"
+      },
+      "g3": {
+        "fallos": 0,
+        "enLinea": true,
+        "status": "latido ok"
+      },
+      "loops": {
+        "latido": "ok"
+      }
+    },
+    "newLogs": [
+      "[LATIDO] GET /health OK",
+      "[LATIDO] fallos=0"
+    ],
+    "packets": [
+      {
+        "edge": "g3-central",
+        "kind": "request",
+        "label": "GET /health",
+        "delay": 100
+      },
+      {
+        "edge": "central-g3",
+        "kind": "response",
+        "label": "200",
+        "delay": 900
+      }
+    ],
+    "edges": [
+      "g3-central",
+      "central-g3"
+    ],
+    "focus": [
+      "g3",
+      "central"
+    ],
+    "hold": 6000
+  },
+  {
+    "phase": "Caída",
+    "title": "3 fallos seguidos: central caído",
+    "concept": "detección de fallos",
+    "desc": "Tras 3 fallos seguidos, <code>en_linea = False</code> y se registra <code>CAIDA_CENTRAL</code>. La cola deja de enviar, pero los mensajes siguen en SQLite.",
+    "snippet": "cc_caida",
+    "active": [
+      278,
+      279,
+      280,
+      281,
+      282,
+      283,
+      284,
+      285,
+      286,
+      287,
+      288,
+      289
+    ],
+    "patch": {
+      "central": {
+        "online": false,
+        "servers": 0,
+        "note": "caído"
+      },
+      "g3": {
+        "enLinea": false,
+        "fallos": 3,
+        "outbox": 1,
+        "status": "central caído · outbox 1"
+      },
+      "loops": {
+        "registro": "fail",
+        "latido": "fail",
+        "cola": "esperando"
+      },
+      "queue": [
+        {
+          "id": "6f1c9a2b",
+          "lamport": 1,
+          "intentos": 2,
+          "espera": 2.1
+        }
+      ]
+    },
+    "newLogs": [
+      "[CAÍDA_CENTRAL] intentos_fallidos=3 pendientes=1",
+      "[CENTRAL_NO_DISPONIBLE] se sigue consultando el latido"
+    ],
+    "packets": [
+      {
+        "edge": "g3-central",
+        "kind": "heartbeat",
+        "label": "GET /health",
+        "delay": 100
+      },
+      {
+        "edge": "g3-central",
+        "kind": "fail",
+        "label": "timeout",
+        "delay": 900
+      }
+    ],
+    "edges": [
+      "g3-central"
+    ],
+    "failEdges": [
+      "g3-central"
+    ],
+    "focus": [
+      "g3",
+      "central",
+      "sqlite"
+    ],
+    "bump": [
+      "enlinea"
+    ],
+    "hold": 7000
+  },
+  {
+    "phase": "Recuperación",
+    "title": "Registro + historial antes de enviar",
+    "concept": "volver sin perder nada",
+    "desc": "Cuando el latido vuelve, <code>_recuperar</code> renueva el registro, pide <code>GET /history?since=marca-1</code> y solo entonces <code>en_linea = True</code>. Recién ahí la cola drena los pendientes.",
+    "snippet": "cc_recuperar",
+    "active": [
+      346,
+      347,
+      348,
+      349,
+      350,
+      351,
+      352,
+      353,
+      354,
+      355,
+      356,
+      357,
+      358,
+      359,
+      360,
+      361,
+      362,
+      363
+    ],
+    "patch": {
+      "central": {
+        "online": true,
+        "servers": 1,
+        "history": 4,
+        "note": "en línea"
+      },
+      "g3": {
+        "enLinea": true,
+        "fallos": 0,
+        "outbox": 0,
+        "intentos": 0,
+        "espera": 0,
+        "marca": 4,
+        "status": "recuperado"
+      },
+      "loops": {
+        "registro": "ok",
+        "latido": "ok",
+        "cola": "ok"
+      },
+      "queue": []
+    },
+    "newLogs": [
+      "[RECUPERACIÓN_INICIO]",
+      "[REGISTRO_OK] servidor=g3",
+      "[HISTORIAL_SINCRONIZADO] desde=3 nuevos=1",
+      "[RECUPERACIÓN_OK] pendientes=0"
+    ],
+    "packets": [
+      {
+        "edge": "g3-central",
+        "kind": "heartbeat",
+        "label": "GET /health OK",
+        "delay": 100
+      },
+      {
+        "edge": "g3-central",
+        "kind": "request",
+        "label": "POST /register",
+        "delay": 700
+      },
+      {
+        "edge": "g3-central",
+        "kind": "request",
+        "label": "GET /history?since=3",
+        "delay": 1300
+      },
+      {
+        "edge": "central-g3",
+        "kind": "response",
+        "label": "historial",
+        "delay": 1900
+      },
+      {
+        "edge": "g3-central",
+        "kind": "request",
+        "label": "POST · L=1",
+        "delay": 2500
+      },
+      {
+        "edge": "central-g3",
+        "kind": "response",
+        "label": "200",
+        "delay": 3100
+      }
+    ],
+    "edges": [
+      "g3-central",
+      "central-g3"
+    ],
+    "focus": [
+      "g3",
+      "central",
+      "sqlite"
+    ],
+    "bump": [
+      "enlinea"
+    ],
+    "hold": 8000
+  },
+  {
+    "phase": "Idempotencia",
+    "title": "El mismo UUID en cada reintento",
+    "concept": "no duplicar",
+    "desc": "El reintento no crea un mensaje nuevo: conserva el mismo <code>id</code>. Si el central ya lo guardó, <code>insertar_mensaje</code> devuelve False y responde <code>duplicate</code>. Por eso la entrega es al menos una vez y el historial no se duplica.",
+    "snippet": "cc_reintento",
+    "active": [
+      666,
+      667,
+      668,
+      669,
+      670,
+      671,
+      672,
+      673,
+      674,
+      675,
+      676,
+      677,
+      678,
+      679
+    ],
+    "patch": {
+      "g3": {
+        "intentos": 2,
+        "outbox": 1,
+        "status": "reintento con mismo id"
+      },
+      "central": {
+        "note": "duplicate · no inserta"
+      },
+      "queue": [
+        {
+          "id": "6f1c9a2b",
+          "lamport": 1,
+          "intentos": 2,
+          "espera": 0
+        }
+      ]
+    },
+    "newLogs": [
+      "[REINTENTO] id=6f1c9a2b intento=2",
+      "[DESCARTE_DUPLICADO] id=6f1c9a2b"
+    ],
+    "packets": [
+      {
+        "edge": "g3-central",
+        "kind": "request",
+        "label": "POST /messages · mismo id",
+        "delay": 100
+      },
+      {
+        "edge": "central-g3",
+        "kind": "duplicate",
+        "label": "duplicate",
+        "delay": 1000
+      }
+    ],
+    "edges": [
+      "g3-central",
+      "central-g3"
+    ],
+    "focus": [
+      "g3",
+      "central"
+    ],
+    "hold": 6500
+  },
+  {
+    "phase": "Pruebas",
+    "title": "13 pruebas propias",
+    "concept": "tests/test_backoff.py · tests/test_config.py",
+    "desc": "<code>test_backoff.py</code> comprueba que la espera crece, respeta el tope y tiene azar. <code>test_config.py</code> comprueba defaults, URLs, nombres y tiempos inválidos. Son 13 pruebas propias dentro de las 41 del proyecto.",
+    "snippet": "cc_pruebas",
+    "active": [
+      18,
+      21,
+      22,
+      24,
+      25,
+      27,
+      28,
+      39,
+      41,
+      42,
+      43,
+      46,
+      47,
+      48
+    ],
+    "patch": {
+      "tests": 13,
+      "central": {
+        "note": "en línea"
+      },
+      "g3": {
+        "outbox": 0,
+        "intentos": 0,
+        "espera": 0,
+        "status": "pruebas OK"
+      },
+      "queue": []
+    },
+    "newLogs": [
+      "[TEST] test_backoff.py · 5 pruebas",
+      "[TEST] test_config.py · 8 pruebas",
+      "[TEST] 13/13 OK"
+    ],
+    "focus": [
+      "tests"
+    ],
+    "hold": 6500
+  },
+  {
+    "phase": "Cierre",
+    "title": "Tres tareas, un estado, cero mensajes perdidos",
+    "concept": "resumen",
+    "desc": "Registro, latido y cola trabajan en paralelo; <code>en_linea</code> coordina el envío; el backoff con jitter evita saturar; el UUID y el historial cierran la garantía de entrega.",
+    "snippet": "summary",
+    "active": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "patch": {
+      "g3": {
+        "status": "todo en orden"
+      },
+      "central": {
+        "online": true,
+        "servers": 1,
+        "history": 4,
+        "note": "en línea"
+      },
+      "queue": [],
+      "tests": 13
+    },
+    "newLogs": [
+      "[RESUMEN] 3 tareas · 13 pruebas · 0 pendientes"
+    ],
+    "focus": [
+      "g3",
+      "central",
+      "sqlite"
+    ],
+    "hold": 7000
+  }
+];
+
+function initialState() {
+  return {
+    central: { online: true, servers: 0, history: 0, note: 'en línea' },
+    g3: { online: false, enLinea: false, outbox: 0, intentos: 0, espera: 0, marca: 0, fallos: 0, status: 'apagado' },
+    loops: { registro: 'idle', latido: 'idle', cola: 'idle' },
+    config: { registro: 10, latido: 5, caida: 3, base: 1, max: 30 },
+    queue: [],
+    tests: 0,
+    logs: [],
+  };
+}
+
+function deepMerge(target, source) {
+  Object.keys(source || {}).forEach((key) => {
+    const value = source[key];
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if (!target[key] || typeof target[key] !== 'object') target[key] = {};
+      deepMerge(target[key], value);
+    } else {
+      target[key] = value;
+    }
+  });
+}
+
+function buildSnapshots(raw) {
+  let acc = initialState();
+  return raw.map((step, index) => {
+    const next = JSON.parse(JSON.stringify(acc));
+    deepMerge(next, step.patch || {});
+    if (step.newSala) next.sala.push.apply(next.sala, step.newSala);
+    if (step.newLogs) next.logs.push.apply(next.logs, step.newLogs);
+    acc = next;
+    return Object.assign({}, step, { index: index, state: next });
+  });
+}
+
+const STEPS = buildSnapshots(RAW_STEPS);
+
+let stepIndex = 0;
+let playing = false;
+let speed = 1;
+let timer = null;
+let videoMode = false;
+let stillMode = false;
+let demoControlsDone = false;
+
+const PATHS = {
+  'g3-central': 'M 230 380 C 270 300, 340 230, 420 175',
+  'central-g3': 'M 440 175 C 350 240, 290 310, 250 380',
+  'g3-sqlite': 'M 380 480 C 460 480, 540 480, 620 480',
+  'sqlite-g3': 'M 620 480 C 540 480, 460 480, 380 480',
+};
+
+const CALLOUT_POS = {
+  g3: [20, 292],
+  central: [650, 198],
+  sqlite: [640, 292],
+};
+
+/* ------------------------------------------------------------------ helpers */
+
+function edgeEl(key) {
+  return document.querySelector('.edge[data-edge="' + key + '"]');
+}
+
+function setText(id, value) {
+  const el = $(id);
+  if (el) el.textContent = value;
+}
+
+function dot(node, state) {
+  const el = $('dot-' + node);
+  if (!el) return;
+  el.classList.remove('online', 'offline', 'idle');
+  if (state) el.classList.add(state);
+}
+
+function bumpBadge(id) {
+  const el = $(id);
+  if (!el) return;
+  el.classList.remove('bump');
+  void el.getBoundingClientRect();
+  el.classList.add('bump');
+  setTimeout(() => el.classList.remove('bump'), 1000);
+}
+
+function pathPoint(d, t) {
+  const p = document.createElementNS(SVG_NS, 'path');
+  p.setAttribute('d', d);
+  const len = p.getTotalLength();
+  return p.getPointAtLength(len * t);
+}
+
+/* ------------------------------------------------------------------- render */
+
+function renderCode(step) {
+  const snip = SNIPPETS[step.snippet];
+  if (!snip) return;
+  setText('fileName', snip.file);
+  const active = new Set(step.active || []);
+  const block = $('codeBlock');
+  block.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  snip.lines.forEach(([n, text]) => {
+    const row = document.createElement('div');
+    row.className = 'code-line' + (active.has(n) ? ' active' : '');
+    const ln = document.createElement('span');
+    ln.className = 'ln';
+    ln.textContent = String(n);
+    const src = document.createElement('span');
+    src.className = 'src';
+    src.textContent = text === '' ? ' ' : text;
+    row.appendChild(ln);
+    row.appendChild(src);
+    frag.appendChild(row);
+  });
+  block.appendChild(frag);
+  const activeEl = block.querySelector('.code-line.active');
+  if (activeEl) {
+    try {
+      activeEl.scrollIntoView({ block: 'center', behavior: stillMode ? 'auto' : 'smooth' });
+    } catch (err) {
+      activeEl.scrollIntoView();
+    }
+  }
+}
+
+function renderVars(step, s) {
+  const chips = [
+    ['en línea', s.g3.enLinea ? 'SÍ' : 'NO', s.g3.enLinea ? 'green' : 'red'],
+    ['fallos latido', s.g3.fallos + ' / ' + s.config.caida, s.g3.fallos >= s.config.caida ? 'red' : 'amber'],
+    ['intentos', String(s.g3.intentos), 'violet'],
+    ['espera', s.g3.espera ? s.g3.espera.toFixed(2) + 's' : '—', 'amber'],
+    ['pendientes', String(s.g3.outbox), 'cyan'],
+    ['marca historial', String(s.g3.marca), 'green'],
+  ];
+  $('varGrid').innerHTML = chips.map(function (c) {
+    return '<div class="var-chip ' + c[2] + '"><span class="k">' + c[0] + '</span><span class="v">' + c[1] + '</span></div>';
+  }).join('');
+
+  if (!s.queue || !s.queue.length) {
+    $('msgCard').innerHTML = '<div class="empty">outbox vacía: no hay mensajes pendientes.</div>';
+    return;
+  }
+  const m = s.queue[0];
+  const espera = m.espera ? m.espera.toFixed(2) + ' s' : 'listo para enviar';
+  $('msgCard').innerHTML =
+    '<div class="meta"><b>id ' + m.id + '</b><span class="l">L=' + m.lamport + '</span><span class="from">intento ' + m.intentos + '</span></div>' +
+    '<div class="body">' + espera + ' · el UUID no cambia en los reintentos</div>';
+}
+
+function renderNodes(step, s) {
+  const focus = new Set(step.focus || []);
+
+  ['central', 'g3', 'sqlite'].forEach(function (k) {
+    const el = $('node-' + k);
+    if (!el) return;
+    el.classList.toggle('is-active', focus.has(k));
+  });
+  ['config', 'tests'].forEach(function (k) {
+    const el = $('info-' + k);
+    if (el) el.classList.toggle('is-active', focus.has(k));
+  });
+
+  const central = $('node-central');
+  central.classList.toggle('offline', !s.central.online);
+  central.classList.toggle('warn', s.central.online && /error|4xx/.test(s.central.note));
+  dot('central', s.central.online ? 'online' : 'offline');
+  setText('servers-central', String(s.central.servers));
+  setText('hist-central', String(s.central.history));
+  setText('status-central', s.central.online ? s.central.note : 'caído · sin respuesta');
+  const cStatus = $('status-central');
+  cStatus.classList.remove('ok', 'bad', 'warn');
+  if (!s.central.online) cStatus.classList.add('bad');
+  else if (/error|4xx/.test(s.central.note)) cStatus.classList.add('warn');
+  else cStatus.classList.add('ok');
+
+  const g3 = $('node-g3');
+  g3.classList.toggle('offline', !s.g3.online);
+  g3.classList.toggle('warn', s.g3.online && !s.g3.enLinea && s.g3.fallos >= s.config.caida);
+  dot('g3', s.g3.online ? 'online' : 'offline');
+  setText('clock-enlinea', s.g3.enLinea ? 'ON' : 'OFF');
+  setText('out-g3', String(s.g3.outbox));
+  setText('int-g3', String(s.g3.intentos));
+  setText('marca-g3', String(s.g3.marca));
+  setText('status-g3', s.g3.status);
+  const g3Status = $('status-g3');
+  g3Status.classList.remove('ok', 'bad', 'warn');
+  if (s.g3.enLinea) g3Status.classList.add('ok');
+  else if (s.g3.fallos >= s.config.caida) g3Status.classList.add('bad');
+  else g3Status.classList.add('warn');
+  const bar = $('bar-g3');
+  if (bar) bar.setAttribute('width', String(Math.min(270, s.g3.outbox * 90)));
+  ['registro', 'latido', 'cola'].forEach(function (k) {
+    const el = $('task-' + k);
+    if (!el) return;
+    el.classList.remove('task-ok', 'task-fail', 'task-idle');
+    const v = s.loops[k];
+    if (v === 'ok' || v === 'activa') el.classList.add('task-ok');
+    else if (v === 'fail') el.classList.add('task-fail');
+    else el.classList.add('task-idle');
+  });
+
+  const db = $('node-sqlite');
+  db.classList.toggle('warn', s.g3.outbox > 0 && !s.g3.enLinea);
+  dot('sqlite', 'online');
+  setText('db-pending', String(s.g3.outbox));
+  setText('db-marca', String(s.g3.marca));
+  setText('db-fallos', String(s.g3.fallos));
+  setText('status-sqlite', s.g3.outbox > 0 ? 'pendientes persistidos' : 'datos persistidos');
+
+  dot('config', 'online');
+  dot('tests', s.tests > 0 ? 'online' : 'idle');
+  setText('test-count', String(s.tests));
+
+  (step.bump || []).forEach(function (k) { bumpBadge('badge-' + k); });
+}
+
+function renderEdges(step, s) {
+  document.querySelectorAll('.edge').forEach(function (el) {
+    el.classList.remove('edge-active', 'edge-fail', 'edge-off');
+    el.setAttribute('marker-end', 'url(#arrow)');
+  });
+  (step.edges || []).forEach(function (k) {
+    const el = edgeEl(k);
+    if (el) {
+      el.classList.add('edge-active');
+      el.setAttribute('marker-end', 'url(#arrow-active)');
+    }
+  });
+  (step.failEdges || []).forEach(function (k) {
+    const el = edgeEl(k);
+    if (el) {
+      el.classList.add('edge-fail');
+      el.setAttribute('marker-end', 'url(#arrow-fail)');
+    }
+  });
+  if (!s.central.online) {
+    ['g3-central', 'central-g3'].forEach(function (k) {
+      const el = edgeEl(k);
+      if (el) el.classList.add('edge-off');
+    });
+  }
+}
+
+function renderPackets(step) {
+  const layer = $('packets');
+  layer.innerHTML = '';
+  const packets = step.packets || [];
+  packets.forEach((p, i) => {
+    const d = PATHS[p.edge];
+    if (!d) return;
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('class', 'packet packet-' + (p.kind || 'request'));
+    if (!stillMode) g.setAttribute('opacity', '0');
+
+    const label = p.label || '';
+    if (label) {
+      const w = Math.max(42, label.length * 5.75 + 18);
+      const rect = document.createElementNS(SVG_NS, 'rect');
+      rect.setAttribute('x', String(-w / 2));
+      rect.setAttribute('y', '-11');
+      rect.setAttribute('width', String(w));
+      rect.setAttribute('height', '22');
+      rect.setAttribute('rx', '11');
+      g.appendChild(rect);
+      const text = document.createElementNS(SVG_NS, 'text');
+      text.setAttribute('y', '3.5');
+      text.textContent = label;
+      g.appendChild(text);
+    } else {
+      const c = document.createElementNS(SVG_NS, 'circle');
+      c.setAttribute('r', '7');
+      g.appendChild(c);
+    }
+
+    if (stillMode) {
+      const pt = pathPoint(d, 0.42 + (i % 3) * 0.12);
+      g.setAttribute('transform', 'translate(' + pt.x + ',' + pt.y + ')');
+      layer.appendChild(g);
+      return;
+    }
+
+    const anim = document.createElementNS(SVG_NS, 'animateMotion');
+    anim.setAttribute('dur', (0.95 / speed).toFixed(3) + 's');
+    anim.setAttribute('fill', 'freeze');
+    anim.setAttribute('begin', 'indefinite');
+    anim.setAttribute('path', d);
+    g.appendChild(anim);
+    layer.appendChild(g);
+    setTimeout(() => {
+      try { anim.beginElement(); } catch (err) { /* ignorar */ }
+      requestAnimationFrame(() => g.setAttribute('opacity', '1'));
+    }, p.delay || 0);
+  });
+}
+
+function renderCallout(step) {
+  const el = $('callout');
+  if (!step.callout) {
+    el.setAttribute('opacity', '0');
+    return;
+  }
+  const pos = CALLOUT_POS[step.callout.node] || [620, 198];
+  el.setAttribute('transform', 'translate(' + pos[0] + ',' + pos[1] + ')');
+  setText('callout-title', step.callout.title || '');
+  setText('callout-sub', step.callout.sub || '');
+  el.setAttribute('opacity', '1');
+}
+
+function renderSala(step, s) {
+  const list = $('salaList');
+  const items = s.queue || [];
+  setText('salaCount', String(items.length));
+  if (!items.length) {
+    list.innerHTML = '<div class="sala-empty">outbox vacía: no hay mensajes pendientes.</div>';
+    return;
+  }
+  const isNew = !!(step.patch && step.patch.queue);
+  list.innerHTML = items.map(function (m) {
+    const espera = m.espera ? 'espera ' + m.espera.toFixed(2) + ' s' : 'listo para enviar';
+    return '<div class="sala-row queue-row' + (isNew ? ' is-new' : '') + '">' +
+      '<span class="sala-l">[L=' + m.lamport + ']</span>' +
+      '<span class="sala-origin">' + m.id + '</span>' +
+      '<span class="sala-from">intento ' + m.intentos + '</span>' +
+      '<span class="sala-body">' + espera + ' · mismo UUID</span>' +
+    '</div>';
+  }).join('');
+  list.scrollTop = list.scrollHeight;
+}
+
+function renderLogs(step, s) {
+  const list = $('logList');
+  const logs = (s.logs || []).slice(-6);
+  if (!logs.length) {
+    list.innerHTML = '<div class="log-row"><span class="log-dot"></span><span>esperando eventos…</span></div>';
+    return;
+  }
+  list.innerHTML = logs.map((text) => {
+    let cls = 'info';
+    if (/FALLO|CAÍDA|DESCARTE|ERROR|500/.test(text)) cls = 'bad';
+    else if (/REINTENTO|NO_DISPONIBLE|duplicado/i.test(text)) cls = 'warn';
+    else if (/OK|aceptado|SINCRONIZADO|RECEPCIÓN|ENVÍO|REGISTRO|ARRANQUE|RESUMEN/.test(text)) cls = 'ok';
+    return '<div class="log-row ' + cls + '"><span class="log-dot"></span><span>' + text + '</span></div>';
+  }).join('');
+  list.scrollTop = list.scrollHeight;
+}
+
+function renderExplain(step) {
+  const kicker = 'Paso ' + (step.index + 1) + ' · ' + step.phase;
+  $('explainKicker').innerHTML = kicker + (step.concept ? '<span class="concept">' + step.concept + '</span>' : '');
+  $('explainTitle').textContent = step.title;
+  $('explainDesc').innerHTML = step.desc;
+}
+
+function renderChrome(step) {
+  const s = step.state;
+  setText('phaseBadge', step.phase);
+  setText('stepCounter', 'Paso ' + (step.index + 1) + ' / ' + STEPS.length);
+  const estado = !s.g3.online ? 'iniciando' : (s.g3.enLinea ? 'en línea' : 'sin enlace');
+  setText('clockSummary', estado + ' · outbox ' + s.g3.outbox + ' · fallos ' + s.g3.fallos);
+  const pct = STEPS.length > 1 ? (step.index / (STEPS.length - 1)) * 100 : 0;
+  $('progressBar').style.width = pct.toFixed(1) + '%';
+  setText('progressLabel', Math.round(pct) + '%');
+  setText('speedLabel', speed + '×');
+  $('btnPrev').disabled = step.index === 0;
+  $('btnNext').disabled = step.index === STEPS.length - 1;
+  updatePlayButton();
+}
+
+function render() {
+  const step = STEPS[stepIndex];
+  if (!step) return;
+  renderCode(step);
+  renderVars(step, step.state);
+  renderNodes(step, step.state);
+  renderEdges(step, step.state);
+  renderPackets(step);
+  renderCallout(step);
+  renderSala(step, step.state);
+  renderLogs(step, step.state);
+  renderExplain(step);
+  renderChrome(step);
+}
+
+/* --------------------------------------------------------------- controles */
+
+function updatePlayButton() {
+  const b = $('btnPlay');
+  if (!b) return;
+  b.innerHTML = playing ? '⏸ Pausar' : '▶ Reproducir';
+  b.setAttribute('aria-label', playing ? 'Pausar' : 'Reproducir');
+}
+
+function pause() {
+  playing = false;
+  clearTimeout(timer);
+  timer = null;
+  updatePlayButton();
+}
+
+function scheduleNext() {
+  clearTimeout(timer);
+  timer = null;
+  if (!playing) return;
+  const base = STEPS[stepIndex].hold || 6000;
+  const ms = base / speed;
+  timer = setTimeout(() => {
+    timer = null;
+    if (!playing) return;
+    if (stepIndex >= STEPS.length - 1) {
+      pause();
+      if (videoMode) showOutro();
+      return;
+    }
+    stepIndex += 1;
+    render();
+    onStepEnter();
+    scheduleNext();
+  }, ms);
+}
+
+function play() {
+  if (stepIndex >= STEPS.length - 1) {
+    stepIndex = 0;
+    render();
+  }
+  playing = true;
+  updatePlayButton();
+  scheduleNext();
+  onStepEnter();
+}
+
+function togglePlay() {
+  if (playing) pause();
+  else play();
+}
+
+function goTo(index, keepPlaying) {
+  stepIndex = clamp(index, 0, STEPS.length - 1);
+  render();
+  if (keepPlaying) scheduleNext();
+  else {
+    clearTimeout(timer);
+    timer = null;
+  }
+  onStepEnter();
+}
+
+function manualStep(delta) {
+  pause();
+  goTo(stepIndex + delta, false);
+}
+
+function restart() {
+  pause();
+  $('videoOutro').classList.add('hide');
+  goTo(0, false);
+}
+
+/* --------------------------------------------------------------- modo video */
+
+function showCursor() {
+  $('cursor').classList.add('on');
+}
+
+function hideCursor() {
+  $('cursor').classList.remove('on');
+}
+
+function moveCursor(el) {
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  moveCursorPoint(r.left + r.width / 2, r.top + r.height / 2);
+}
+
+function moveCursorPoint(cx, cy) {
+  $('cursor').style.transform = 'translate(' + (cx - 5) + 'px, ' + (cy - 2) + 'px)';
+}
+
+function cursorToGraph() {
+  const r = $('scene').getBoundingClientRect();
+  moveCursorPoint(r.left + r.width * 0.55, r.top + r.height * 0.45);
+}
+
+function clickRipple(el) {
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  const ripple = document.createElement('div');
+  ripple.className = 'click-ripple';
+  ripple.style.left = (r.left + r.width / 2) + 'px';
+  ripple.style.top = (r.top + r.height / 2) + 'px';
+  document.body.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 620);
+  const cur = $('cursor');
+  cur.classList.add('click');
+  setTimeout(() => cur.classList.remove('click'), 300);
+}
+
+function runControlDemo() {
+  if (!videoMode) return;
+  pause();
+  moveCursor($('btnPrev'));
+  setTimeout(() => { clickRipple($('btnPrev')); $('btnPrev').click(); }, 650);
+  setTimeout(() => { moveCursor($('btnNext')); }, 1450);
+  setTimeout(() => { clickRipple($('btnNext')); $('btnNext').click(); }, 1950);
+  setTimeout(() => { clickRipple($('btnNext')); $('btnNext').click(); }, 2600);
+  setTimeout(() => { moveCursor($('btnPlay')); }, 3300);
+  setTimeout(() => { clickRipple($('btnPlay')); $('btnPlay').click(); }, 3800);
+  setTimeout(cursorToGraph, 5000);
+}
+
+function onStepEnter() {
+  // La versión de Emerson es una animación de código: no hay demo de controles.
+}
+
+function showOutro() {
+  $('videoOutro').classList.remove('hide');
+  hideCursor();
+  playing = false;
+  updatePlayButton();
+  window.__videoDone = true;
+}
+
+function initVideo() {
+  $('videoIntro').classList.remove('hide');
+  $('videoOutro').classList.add('hide');
+  playing = false;
+  updatePlayButton();
+  render();
+  setTimeout(() => {
+    moveCursor($('btnPlay'));
+    $('videoIntro').classList.add('hide');
+    showCursor();
+  }, 4300);
+  setTimeout(() => {
+    if (!playing) {
+      clickRipple($('btnPlay'));
+      $('btnPlay').click();
+    }
+  }, 5750);
+  setTimeout(cursorToGraph, 6900);
+  setTimeout(() => {
+    if (!playing && !window.__videoDone) {
+      clickRipple($('btnPlay'));
+      $('btnPlay').click();
+    }
+  }, 7200);
+}
+
+/* ------------------------------------------------------------------- inicio */
+
+function bindEvents() {
+  $('btnRestart').addEventListener('click', restart);
+  $('btnPrev').addEventListener('click', () => manualStep(-1));
+  $('btnPlay').addEventListener('click', togglePlay);
+  $('btnNext').addEventListener('click', () => manualStep(1));
+  $('speed').addEventListener('input', (e) => {
+    speed = parseFloat(e.target.value) || 1;
+    setText('speedLabel', speed + '×');
+    if (playing) scheduleNext();
+  });
+  $('progressTrack').addEventListener('click', (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const ratio = clamp((e.clientX - r.left) / r.width, 0, 1);
+    pause();
+    goTo(Math.round(ratio * (STEPS.length - 1)), false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); manualStep(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); manualStep(1); }
+    else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+    else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); restart(); }
+  });
+}
+
+function init() {
+  const params = new URLSearchParams(location.search);
+  videoMode = params.get('video') === '1';
+  stillMode = params.get('still') === '1';
+  const rawSpeed = parseFloat(params.get('speed') || '1');
+  speed = clamp(Number.isFinite(rawSpeed) ? rawSpeed : 1, 0.5, 2.5);
+  $('speed').value = String(speed);
+  setText('speedLabel', speed + '×');
+  stepIndex = clamp(parseInt(params.get('step') || '0', 10) || 0, 0, STEPS.length - 1);
+  window.__videoDone = false;
+  bindEvents();
+  render();
+  if (videoMode) initVideo();
+  else {
+    playing = false;
+    updatePlayButton();
+  }
+}
+
+init();
+</script>
+</body>
+</html>
