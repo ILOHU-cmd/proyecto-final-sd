@@ -1,8 +1,9 @@
-"""Logs de auditoría del servidor.
+"""Registros de auditoría del servidor.
 
 El enunciado pide logs legibles de lo que el servidor envía, recibe, reintenta
 y descarta. También son la fuente de datos del experimento. Por eso todos los
-eventos importantes pasan por ``log_event`` y llevan un nombre en mayúsculas:
+eventos importantes pasan por ``registrar_evento`` y llevan un nombre en
+mayúsculas:
 
     [ENVÍO] [RECEPCIÓN] [REINTENTO] [DESCARTE_DUPLICADO] [CAÍDA_CENTRAL] ...
 
@@ -15,55 +16,62 @@ from __future__ import annotations
 import logging
 import sys
 
-_LOGGER_NAME = "chat"
-_server_name = "?"
-_configured = False
+_NOMBRE_REGISTRADOR = "chat"
+_nombre_servidor = "?"
+_configurado = False
 
 
-def setup_logging(level: str = "INFO", server_name: str = "?") -> None:
-    """Configura el logger una sola vez.
+def configurar_registros(nivel: str = "INFO", nombre_servidor: str = "?") -> None:
+    """Configura el registrador una sola vez.
 
     Se usa ``sys.stdout`` para que ``docker compose logs`` muestre todo sin
     necesidad de configuración adicional.
     """
-    global _server_name, _configured
-    _server_name = server_name
+    global _nombre_servidor, _configurado
 
-    logger = logging.getLogger(_LOGGER_NAME)
-    logger.setLevel(level.upper())
-    logger.propagate = False
+    _nombre_servidor = nombre_servidor
 
-    if _configured:
+    registrador = logging.getLogger(_NOMBRE_REGISTRADOR)
+    registrador.setLevel(nivel.upper())
+    registrador.propagate = False
+
+    if _configurado:
         return
 
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(
+    manejador = logging.StreamHandler(sys.stdout)
+    manejador.setFormatter(
         logging.Formatter(
             fmt="%(asctime)s %(levelname)-7s %(message)s",
             datefmt="%Y-%m-%dT%H:%M:%S",
         )
     )
-    logger.addHandler(handler)
-    _configured = True
+    registrador.addHandler(manejador)
+    _configurado = True
 
 
-def log_event(event: str, message: str = "", **fields: object) -> None:
+def registrar_evento(evento: str, mensaje: str = "", **campos: object) -> None:
     """Escribe un evento legible con la forma ``[g3] [EVENTO] clave=valor``."""
-    parts = [f"[{_server_name}]", f"[{event}]"]
-    if message:
-        parts.append(message)
-    for key, value in fields.items():
-        if value is not None:
-            parts.append(f"{key}={value}")
-    logging.getLogger(_LOGGER_NAME).info(" ".join(parts))
+    partes = [f"[{_nombre_servidor}]", f"[{evento}]"]
+
+    if mensaje:
+        partes.append(mensaje)
+
+    for clave, valor in campos.items():
+        if valor is not None:
+            partes.append(f"{clave}={valor}")
+
+    logging.getLogger(_NOMBRE_REGISTRADOR).info(" ".join(partes))
 
 
-def log_error(event: str, message: str = "", **fields: object) -> None:
-    """Igual que ``log_event``, pero con nivel ERROR para facilitar búsquedas."""
-    parts = [f"[{_server_name}]", f"[{event}]"]
-    if message:
-        parts.append(message)
-    for key, value in fields.items():
-        if value is not None:
-            parts.append(f"{key}={value}")
-    logging.getLogger(_LOGGER_NAME).error(" ".join(parts))
+def registrar_error(evento: str, mensaje: str = "", **campos: object) -> None:
+    """Igual que ``registrar_evento``, pero con nivel ERROR para buscar mejor."""
+    partes = [f"[{_nombre_servidor}]", f"[{evento}]"]
+
+    if mensaje:
+        partes.append(mensaje)
+
+    for clave, valor in campos.items():
+        if valor is not None:
+            partes.append(f"{clave}={valor}")
+
+    logging.getLogger(_NOMBRE_REGISTRADOR).error(" ".join(partes))
