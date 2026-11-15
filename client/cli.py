@@ -26,85 +26,88 @@ from typing import Any
 
 import httpx
 
-DEFAULT_URL = os.getenv("GROUP_SERVER_URL", "http://localhost:8001")
+URL_POR_DEFECTO = os.getenv("GROUP_SERVER_URL", "http://localhost:8001")
 
-_RESET = "\033[0m"
-_BOLD = "\033[1m"
-_DIM = "\033[2m"
-_RED = "\033[31m"
-_GREEN = "\033[32m"
-_YELLOW = "\033[33m"
-_CYAN = "\033[36m"
+_REINICIAR = "\033[0m"
+_NEGRITA = "\033[1m"
+_TENUE = "\033[2m"
+_ROJO = "\033[31m"
+_VERDE = "\033[32m"
+_AMARILLO = "\033[33m"
+_CIAN = "\033[36m"
 
 
-class CliError(Exception):
+class ErrorCli(Exception):
     """Error controlado para mostrar un mensaje claro al usuario."""
 
 
-def _color(text: str, code: str, enabled: bool) -> str:
-    return f"{code}{text}{_RESET}" if enabled else text
+def _colorear(texto: str, codigo: str, activo: bool) -> str:
+    return f"{codigo}{texto}{_REINICIAR}" if activo else texto
 
 
-class Api:
+class ClienteApi:
     """Envoltorio pequeño de httpx con mensajes de error legibles."""
 
-    def __init__(self, base_url: str) -> None:
-        self.base_url = base_url.rstrip("/")
-        self._client = httpx.Client(base_url=self.base_url, timeout=10.0)
+    def __init__(self, url_base: str) -> None:
+        self.url_base = url_base.rstrip("/")
+        self._cliente = httpx.Client(base_url=self.url_base, timeout=10.0)
 
-    def close(self) -> None:
-        self._client.close()
+    def cerrar(self) -> None:
+        self._cliente.close()
 
-    def request(self, method: str, path: str, **kwargs: Any) -> Any:
+    def solicitar(self, metodo: str, ruta: str, **opciones: Any) -> Any:
         try:
-            response = self._client.request(method, path, **kwargs)
-        except httpx.HTTPError as exc:
-            raise CliError(
-                f"No se pudo conectar con {self.base_url}: {type(exc).__name__}"
-            ) from exc
+            respuesta = self._cliente.request(metodo, ruta, **opciones)
+        except httpx.HTTPError as error:
+            raise ErrorCli(
+                f"No se pudo conectar con {self.url_base}: {type(error).__name__}"
+            ) from error
 
-        if response.status_code >= 400:
-            detail: Any
+        if respuesta.status_code >= 400:
+            detalle: Any
             try:
-                detail = response.json().get("detail", response.text)
+                detalle = respuesta.json().get("detail", respuesta.text)
             except ValueError:
-                detail = response.text
-            raise CliError(f"HTTP {response.status_code}: {detail}")
+                detalle = respuesta.text
+            raise ErrorCli(f"HTTP {respuesta.status_code}: {detalle}")
 
-        if response.status_code == 204:
+        if respuesta.status_code == 204:
             return None
-        return response.json()
 
-    def get(self, path: str, **params: Any) -> Any:
-        return self.request("GET", path, params=params)
+        return respuesta.json()
 
-    def post(self, path: str, payload: dict[str, Any]) -> Any:
-        return self.request("POST", path, json=payload)
+    def obtener(self, ruta: str, **parametros: Any) -> Any:
+        return self.solicitar("GET", ruta, params=parametros)
+
+    def enviar(self, ruta: str, cuerpo: dict[str, Any]) -> Any:
+        return self.solicitar("POST", ruta, json=cuerpo)
 
 
-def format_message(message: dict[str, Any], own_server: str, color: bool) -> str:
+def formatear_mensaje(
+    mensaje: dict[str, Any], servidor_propio: str, color: bool
+) -> str:
     """Formatea un mensaje y distingue visualmente a los grupos.
 
     El color cian es nuestro grupo y el amarillo los demás. La marca [L=..]
     es el reloj de Lamport, que es el que define el orden real.
     """
-    origin = str(message.get("origin", "?"))
-    sender = str(message.get("from", "?"))
-    lamport = int(message.get("lamport", 0))
-    body = str(message.get("body", ""))
+    origen = str(mensaje.get("origin", "?"))
+    remitente = str(mensaje.get("from", "?"))
+    lamport = int(mensaje.get("lamport", 0))
+    cuerpo = str(mensaje.get("body", ""))
 
-    code = _CYAN if origin == own_server else _YELLOW
-    tag = _color(f"[{origin:>4}]", code, color)
-    lamport_text = _color(f"[L={lamport:>4}]", _DIM, color)
-    sender_text = _color(f"{sender:<24}", code, color)
-    return f"{lamport_text} {tag} {sender_text} {body}"
+    codigo = _CIAN if origen == servidor_propio else _AMARILLO
+    etiqueta = _colorear(f"[{origen:>4}]", codigo, color)
+    texto_lamport = _colorear(f"[L={lamport:>4}]", _TENUE, color)
+    texto_remitente = _colorear(f"{remitente:<24}", codigo, color)
+    return f"{texto_lamport} {etiqueta} {texto_remitente} {cuerpo}"
 
 
-def get_own_server(api: Api) -> str:
+def obtener_servidor_propio(api: ClienteApi) -> str:
     """Consulta el nombre del servidor para colorear los mensajes propios."""
     try:
-        return str(api.get("/status").get("server", "?"))
-    except CliError:
+        return str(api.obtener("/status").get("server", "?"))
+    except ErrorCli:
         return "?"
 
 
@@ -113,118 +116,161 @@ def get_own_server(api: Api) -> str:
 # ---------------------------------------------------------------------------
 
 
-def cmd_users(api: Api, color: bool) -> None:
-    data = api.get("/users")
-    users = data.get("users", [])
-    if not users:
+def comando_usuarios(api: ClienteApi, color: bool) -> None:
+    datos = api.obtener("/users")
+    usuarios = datos.get("users", [])
+
+    if not usuarios:
         print("No hay usuarios locales. Crea uno con: create-user <nombre>")
         return
-    print(_color("Usuarios locales:", _BOLD, color))
-    for user in users:
-        print(f"  - {user['identity']}")
+
+    print(_colorear("Usuarios locales:", _NEGRITA, color))
+    for usuario in usuarios:
+        print(f"  - {usuario['identity']}")
 
 
-def cmd_create_user(api: Api, username: str, color: bool) -> None:
-    user = api.post("/users", {"username": username})
-    print(_color(f"Usuario creado: {user['identity']}", _GREEN, color))
-
-
-def cmd_send(api: Api, user: str, text: str, color: bool) -> None:
-    message = api.post("/messages", {"user": user, "body": text})
+def comando_crear_usuario(api: ClienteApi, nombre_usuario: str, color: bool) -> None:
+    usuario = api.enviar("/users", {"username": nombre_usuario})
     print(
-        _color(
-            f"Enviado (id={message['id'][:8]}…, L={message['lamport']})",
-            _DIM,
+        _colorear(
+            f"Usuario creado: {usuario['identity']}",
+            _VERDE,
             color,
         )
     )
 
 
-def cmd_status(api: Api, color: bool) -> None:
-    info = api.get("/")
-    status = api.get("/status")
-
-    online = bool(status.get("central_online"))
-    online_text = (
-        _color("EN LÍNEA", _GREEN, color) if online else _color("CAÍDO", _RED, color)
+def comando_enviar(
+    api: ClienteApi, nombre_usuario: str, texto: str, color: bool
+) -> None:
+    mensaje = api.enviar(
+        "/messages",
+        {"user": nombre_usuario, "body": texto},
+    )
+    print(
+        _colorear(
+            f"Enviado (id={mensaje['id'][:8]}…, L={mensaje['lamport']})",
+            _TENUE,
+            color,
+        )
     )
 
-    print(_color(f"Servidor: {status.get('server')}", _BOLD, color))
-    print(f"URL pública:      {info.get('public_url')}")
-    print(f"Central:          {info.get('central_url')}")
-    print(f"Estado central:   {online_text}")
-    print(f"Reloj Lamport:    {status.get('lamport')}")
-    print(f"Pendientes:       {status.get('pending_messages')} mensaje(s)")
-    print(f"Usuarios locales: {status.get('users')}")
+
+def comando_estado(api: ClienteApi, color: bool) -> None:
+    informacion = api.obtener("/")
+    estado = api.obtener("/status")
+
+    en_linea = bool(estado.get("central_online"))
+    texto_estado = (
+        _colorear("EN LÍNEA", _VERDE, color)
+        if en_linea
+        else _colorear("CAÍDO", _ROJO, color)
+    )
+
+    print(_colorear(f"Servidor: {estado.get('server')}", _NEGRITA, color))
+    print(f"URL pública:      {informacion.get('public_url')}")
+    print(f"Central:          {informacion.get('central_url')}")
+    print(f"Estado central:   {texto_estado}")
+    print(f"Reloj Lamport:    {estado.get('lamport')}")
+    print(f"Pendientes:       {estado.get('pending_messages')} mensaje(s)")
+    print(f"Usuarios locales: {estado.get('users')}")
 
 
-def cmd_read(api: Api, since: int, follow: bool, interval: float, color: bool) -> None:
-    own_server = get_own_server(api) if color else "?"
-    seen: set[str] = set()
+def comando_leer(
+    api: ClienteApi,
+    since: int,
+    seguir: bool,
+    intervalo: float,
+    color: bool,
+) -> None:
+    servidor_propio = obtener_servidor_propio(api) if color else "?"
+    vistos: set[str] = set()
 
     while True:
-        data = api.get("/messages", since=since, limit=5000)
-        for message in data.get("messages", []):
-            message_id = str(message.get("id"))
-            if message_id in seen:
+        datos = api.obtener("/messages", since=since, limit=5000)
+
+        for mensaje in datos.get("messages", []):
+            id_mensaje = str(mensaje.get("id"))
+            if id_mensaje in vistos:
                 continue
-            seen.add(message_id)
-            since = max(since, int(message.get("lamport", 0)))
-            print(format_message(message, own_server, color))
 
-        if not follow:
+            vistos.add(id_mensaje)
+            since = max(since, int(mensaje.get("lamport", 0)))
+            print(formatear_mensaje(mensaje, servidor_propio, color))
+
+        if not seguir:
             return
-        time.sleep(interval)
+
+        time.sleep(intervalo)
 
 
-def cmd_chat(api: Api, user: str, since: int, interval: float, color: bool) -> None:
+def comando_chat(
+    api: ClienteApi,
+    nombre_usuario: str,
+    since: int,
+    intervalo: float,
+    color: bool,
+) -> None:
     """Modo interactivo: se escribe con Enter y se reciben mensajes en vivo."""
-    own_server = get_own_server(api)
-    stop = threading.Event()
-    print_lock = threading.Lock()
-    seen: set[str] = set()
-    state = {"since": since}
+    servidor_propio = obtener_servidor_propio(api)
+    detener = threading.Event()
+    candado_impresion = threading.Lock()
+    vistos: set[str] = set()
+    estado = {"since": since}
 
-    def poll_messages() -> None:
+    def consultar_mensajes() -> None:
         """Hilo lector: consulta el historial local periódicamente."""
-        with httpx.Client(base_url=api.base_url, timeout=10.0) as client:
-            while not stop.is_set():
+        with httpx.Client(base_url=api.url_base, timeout=10.0) as cliente:
+            while not detener.is_set():
                 try:
-                    response = client.get(
+                    respuesta = cliente.get(
                         "/messages",
-                        params={"since": state["since"], "limit": 5000},
+                        params={"since": estado["since"], "limit": 5000},
                     )
-                    response.raise_for_status()
-                    messages = response.json().get("messages", [])
+                    respuesta.raise_for_status()
+                    mensajes = respuesta.json().get("messages", [])
                 except (httpx.HTTPError, ValueError):
                     # Si el servidor se reinicia, el chat sigue vivo y se
                     # recupera en la siguiente vuelta.
-                    stop.wait(interval)
+                    detener.wait(intervalo)
                     continue
 
-                for message in messages:
-                    message_id = str(message.get("id"))
-                    if message_id in seen:
+                for mensaje in mensajes:
+                    id_mensaje = str(mensaje.get("id"))
+                    if id_mensaje in vistos:
                         continue
-                    seen.add(message_id)
-                    state["since"] = max(state["since"], int(message.get("lamport", 0)))
-                    line = format_message(message, own_server, color)
-                    with print_lock:
+
+                    vistos.add(id_mensaje)
+                    estado["since"] = max(
+                        estado["since"],
+                        int(mensaje.get("lamport", 0)),
+                    )
+                    linea = formatear_mensaje(
+                        mensaje,
+                        servidor_propio,
+                        color,
+                    )
+
+                    with candado_impresion:
                         # \r limpia el "> " que muestra input() y luego se
                         # vuelve a dibujar el prompt.
-                        print(f"\r{line}")
+                        print(f"\r{linea}")
                         print("> ", end="", flush=True)
 
-                stop.wait(interval)
+                detener.wait(intervalo)
 
-    reader = threading.Thread(target=poll_messages, name="chat-reader", daemon=True)
-    reader.start()
+    lector = threading.Thread(
+        target=consultar_mensajes,
+        name="lector-chat",
+        daemon=True,
+    )
+    lector.start()
 
     print(
-        _color(
-            f"Chat de {user}@{own_server}. "
+        _colorear(
+            f"Chat de {nombre_usuario}@{servidor_propio}. "
             "Enter para enviar, /usuarios para listar, /salir para terminar.",
-            _BOLD,
+            _NEGRITA,
             color,
         )
     )
@@ -232,49 +278,57 @@ def cmd_chat(api: Api, user: str, since: int, interval: float, color: bool) -> N
     try:
         while True:
             try:
-                line = input("> ")
+                linea = input("> ")
             except EOFError:
                 print()
                 break
 
-            text = line.strip()
-            if not text:
+            texto = linea.strip()
+            if not texto:
                 continue
-            if text in ("/salir", "/exit", "/quit"):
+
+            if texto in ("/salir", "/exit", "/quit"):
                 break
-            if text == "/usuarios":
+
+            if texto == "/usuarios":
                 try:
-                    data = api.get("/users")
-                    with print_lock:
-                        names = ", ".join(u["identity"] for u in data.get("users", []))
-                        print(f"\rUsuarios: {names}")
+                    datos = api.obtener("/users")
+                    with candado_impresion:
+                        nombres = ", ".join(
+                            usuario["identity"] for usuario in datos.get("users", [])
+                        )
+                        print(f"\rUsuarios: {nombres}")
                         print("> ", end="", flush=True)
-                except CliError as exc:
-                    print(f"\r{_color(str(exc), _RED, color)}")
+                except ErrorCli as error:
+                    print(f"\r{_colorear(str(error), _ROJO, color)}")
                     print("> ", end="", flush=True)
                 continue
 
             try:
-                message = api.post("/messages", {"user": user, "body": text})
-                with print_lock:
+                mensaje = api.enviar(
+                    "/messages",
+                    {"user": nombre_usuario, "body": texto},
+                )
+                with candado_impresion:
                     print(
-                        _color(
-                            f"\r(enviado id={message['id'][:8]}…, "
-                            f"L={message['lamport']})",
-                            _DIM,
+                        _colorear(
+                            f"\r(enviado id={mensaje['id'][:8]}…, "
+                            f"L={mensaje['lamport']})",
+                            _TENUE,
                             color,
                         )
                     )
                     print("> ", end="", flush=True)
-            except CliError as exc:
-                with print_lock:
-                    print(f"\r{_color(str(exc), _RED, color)}")
+            except ErrorCli as error:
+                with candado_impresion:
+                    print(f"\r{_colorear(str(error), _ROJO, color)}")
                     print("> ", end="", flush=True)
+
     except KeyboardInterrupt:
         print()
     finally:
-        stop.set()
-        reader.join(timeout=2.0)
+        detener.set()
+        lector.join(timeout=2.0)
         print("Hasta luego.")
 
 
@@ -283,8 +337,8 @@ def cmd_chat(api: Api, user: str, since: int, interval: float, color: bool) -> N
 # ---------------------------------------------------------------------------
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+def construir_analizador() -> argparse.ArgumentParser:
+    analizador = argparse.ArgumentParser(
         description="Cliente de consola del chat distribuido (UIS EISI).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -295,86 +349,114 @@ def build_parser() -> argparse.ArgumentParser:
             "  python client/cli.py chat ana\n"
         ),
     )
-    parser.add_argument(
+    analizador.add_argument(
         "--url",
-        default=DEFAULT_URL,
-        help=f"URL de nuestro servidor de grupo (default: {DEFAULT_URL})",
+        default=URL_POR_DEFECTO,
+        help=f"URL de nuestro servidor de grupo (default: {URL_POR_DEFECTO})",
     )
-    parser.add_argument(
+    analizador.add_argument(
         "--no-color",
         action="store_true",
         help="Desactiva los colores ANSI (útil al redirigir la salida).",
     )
 
-    sub = parser.add_subparsers(dest="command", required=True)
+    subcomandos = analizador.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("users", help="Lista los usuarios locales")
-    sub.add_parser("status", help="Muestra el estado del servidor y del central")
-
-    create = sub.add_parser("create-user", help="Crea un usuario local")
-    create.add_argument("username")
-
-    send = sub.add_parser("send", help="Envía un mensaje a #general")
-    send.add_argument("user")
-    send.add_argument("text", nargs="+", help="Texto del mensaje")
-
-    read = sub.add_parser("read", help="Lee el historial local")
-    read.add_argument("--since", type=int, default=0, help="Marca de Lamport")
-    read.add_argument(
-        "--follow", action="store_true", help="Sigue leyendo mensajes nuevos"
-    )
-    read.add_argument(
-        "--interval", type=float, default=2.0, help="Segundos entre consultas"
+    subcomandos.add_parser("users", help="Lista los usuarios locales")
+    subcomandos.add_parser(
+        "status",
+        help="Muestra el estado del servidor y del central",
     )
 
-    chat = sub.add_parser("chat", help="Modo interactivo para conversar")
+    crear = subcomandos.add_parser("create-user", help="Crea un usuario local")
+    crear.add_argument("username")
+
+    enviar = subcomandos.add_parser("send", help="Envía un mensaje a #general")
+    enviar.add_argument("user")
+    enviar.add_argument("text", nargs="+", help="Texto del mensaje")
+
+    leer = subcomandos.add_parser("read", help="Lee el historial local")
+    leer.add_argument("--since", type=int, default=0, help="Marca de Lamport")
+    leer.add_argument(
+        "--follow",
+        action="store_true",
+        help="Sigue leyendo mensajes nuevos",
+    )
+    leer.add_argument(
+        "--interval",
+        type=float,
+        default=2.0,
+        help="Segundos entre consultas",
+    )
+
+    chat = subcomandos.add_parser("chat", help="Modo interactivo para conversar")
     chat.add_argument("user")
     chat.add_argument("--since", type=int, default=0, help="Marca de Lamport")
     chat.add_argument(
-        "--interval", type=float, default=1.5, help="Segundos entre consultas"
+        "--interval",
+        type=float,
+        default=1.5,
+        help="Segundos entre consultas",
     )
 
-    return parser
+    return analizador
 
 
-def main(argv: list[str] | None = None) -> int:
+def principal(argv: list[str] | None = None) -> int:
     # Sin esto, al redirigir la salida a un archivo o a otra tubería los
     # mensajes se quedan en el búfer y pareciera que el cliente no funciona.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(line_buffering=True)
 
-    parser = build_parser()
-    args = parser.parse_args(argv)
+    analizador = construir_analizador()
+    argumentos = analizador.parse_args(argv)
 
-    color = not args.no_color and sys.stdout.isatty()
-    api = Api(args.url)
+    color = not argumentos.no_color and sys.stdout.isatty()
+    api = ClienteApi(argumentos.url)
 
     try:
-        if args.command == "users":
-            cmd_users(api, color)
-        elif args.command == "create-user":
-            cmd_create_user(api, args.username, color)
-        elif args.command == "send":
-            cmd_send(api, args.user, " ".join(args.text), color)
-        elif args.command == "read":
-            cmd_read(api, args.since, args.follow, args.interval, color)
-        elif args.command == "chat":
-            cmd_chat(api, args.user, args.since, args.interval, color)
-        elif args.command == "status":
-            cmd_status(api, color)
+        if argumentos.command == "users":
+            comando_usuarios(api, color)
+        elif argumentos.command == "create-user":
+            comando_crear_usuario(api, argumentos.username, color)
+        elif argumentos.command == "send":
+            comando_enviar(
+                api,
+                argumentos.user,
+                " ".join(argumentos.text),
+                color,
+            )
+        elif argumentos.command == "read":
+            comando_leer(
+                api,
+                argumentos.since,
+                argumentos.follow,
+                argumentos.interval,
+                color,
+            )
+        elif argumentos.command == "chat":
+            comando_chat(
+                api,
+                argumentos.user,
+                argumentos.since,
+                argumentos.interval,
+                color,
+            )
+        elif argumentos.command == "status":
+            comando_estado(api, color)
         else:  # pragma: no cover - argparse ya valida las opciones
-            parser.error(f"Comando desconocido: {args.command}")
-    except CliError as exc:
-        print(_color(f"Error: {exc}", _RED, color), file=sys.stderr)
+            analizador.error(f"Comando desconocido: {argumentos.command}")
+    except ErrorCli as error:
+        print(_colorear(f"Error: {error}", _ROJO, color), file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         print()
         return 130
     finally:
-        api.close()
+        api.cerrar()
 
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(principal())

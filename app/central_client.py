@@ -1,421 +1,540 @@
 """Cliente hacia el servidor central.
 
-Este módulo concentra la parte de "sistemas distribuidos" del servidor:
+Este módulo mantiene el enlace entre nuestro servidor de grupo y el servidor
+central. Mientras la aplicación está encendida, tres tareas de fondo trabajan
+al mismo tiempo:
 
-1. Registro periódico (POST /register) para que el central sepa nuestra URL.
-2. Heartbeat pull (GET /health). Tras ``HEARTBEAT_FAILURES`` fallos seguidos
-   marcamos el central como caído y dejamos de enviar.
-3. Cola de salida persistente con entrega al menos una vez. Cada mensaje se
-   reintenta con espera exponencial + jitter. Los 4xx no se reintentan.
-4. Recuperación: al volver el central se renueva el registro y se pide
-   GET /history?since={lamport} para recuperar lo perdido durante la caída.
+1. **Registro**: avisa al central cada ciertos segundos dónde estamos
+   (``POST /register``). Se repite porque el central puede reiniciarse y
+   olvidar la lista de servidores.
 
-Se usa httpx.AsyncClient para no bloquear el servidor mientras se espera la
-respuesta del central. Las tres tareas (registro, heartbeat y envío) corren
-concurrentemente en el mismo bucle de asyncio.
+2. **Latido**: pregunta al central si está vivo (``GET /health``). Si falla
+   varias veces seguidas, se marca como caído y se deja de enviar. Cuando
+   vuelve, se recupera el historial que nos perdimos.
+
+3. **Cola de salida**: saca de SQLite los mensajes que todavía no fueron
+   aceptados y los envía uno por uno (``POST /messages``).
+
+Conceptos de sistemas distribuidos que aplica este módulo:
+
+- **Entrega al menos una vez**: un mensaje se reintenta hasta que el central
+  responde 2xx. Si se pierde la respuesta, se reenvía con el mismo ``id`` y el
+  central lo deduplica; por eso reintentar de más no crea duplicados.
+- **Espera exponencial con variación aleatoria**: entre un reintento y otro se
+  espera cada vez más (1s, 2s, 4s...) con algo de azar, para que varios grupos
+  no golpeen al central al mismo tiempo cuando vuelve.
+- **Latido consultado (pull)**: somos nosotros quienes preguntamos si el
+  central está vivo, en lugar de esperar a que él nos avise.
+- **Sincronización de historial**: al arrancar o al volver de una caída se pide
+  ``GET /history?since=...`` para recuperar lo que nos perdimos.
+
+Se usa ``httpx.AsyncClient`` para que esperar una respuesta del central no
+bloquee el resto del servidor.
 """
-
-from __future__ import annotations
 
 import asyncio
 import random
 import time
-from typing import Any
 
 import httpx
 from pydantic import ValidationError
 
-from app.config import Settings
-from app.database import Database, OutboxItem
-from app.lamport import LamportClock
-from app.logger import log_error, log_event
-from app.models import Message, RegisterRequest
+from app.config import Configuracion
+from app.database import BaseDatos, ElementoColaSalida
+from app.lamport import RelojLamport
+from app.logger import registrar_error, registrar_evento
+from app.models import Mensaje, SolicitudRegistro
 
 
-def exponential_backoff(attempt: int, base: float, cap: float) -> float:
-    """Espera exponencial con jitter.
+def calcular_espera_reintento(
+    intento_actual: int, segundos_base: float, segundos_maximos: float
+) -> float:
+    """Devuelve cuántos segundos esperar antes del próximo reintento.
 
-    ``attempt`` empieza en 1. El valor base se duplica en cada intento y se
-    limita con ``cap``. El jitter (variación aleatoria de ±50 %) evita que
-    todos los servidores reintenten exactamente al mismo tiempo cuando el
-    central vuelve: es el problema de la "manada desbocada" o thundering herd.
+    Recibe:
 
-    El cálculo es determinista en su parte exponencial, pero aleatorio en la
-    espera final, así que dos mensajes que fallaron juntos no se reintentan
-    sincronizados. El resultado se vuelve a limitar con ``cap`` para que el
-    tope sea real incluso después de aplicar el jitter.
+    - ``intento_actual``: número del intento que acaba de fallar (empieza en 1).
+    - ``segundos_base``: espera del primer reintento (por defecto 1 segundo).
+    - ``segundos_maximos``: tope máximo permitido (por defecto 30 segundos).
+
+    La espera crece con cada intento para no saturar al central con reintentos
+    inmediatos. Además se le suma una variación aleatoria de ±50 % para que
+    varios grupos no reintenten exactamente al mismo tiempo.
+
+    Ejemplo con base 1 y máximo 30:
+
+    - intento 1 -> alrededor de 1 segundo,
+    - intento 2 -> alrededor de 2 segundos,
+    - intento 3 -> alrededor de 4 segundos,
+    - ... hasta llegar al tope de 30 segundos.
     """
-    exponential = min(cap, base * (2 ** max(0, attempt - 1)))
-    jittered = random.uniform(exponential * 0.5, exponential * 1.5)
-    return min(cap, jittered)
+    # 2 ** (intento - 1) duplica el valor en cada intento: 1, 2, 4, 8...
+    # max(0, ...) evita un exponente negativo si llegara un intento inválido.
+    # min(..., segundos_maximos) impone el tope desde el principio.
+    espera_exponencial = min(
+        segundos_maximos,
+        segundos_base * (2 ** max(0, intento_actual - 1)),
+    )
+
+    # Variación aleatoria ("jitter"): en vez de esperar exactamente el valor
+    # calculado, se espera algo entre la mitad y el doble y medio.
+    espera_con_azar = random.uniform(
+        espera_exponencial * 0.5,
+        espera_exponencial * 1.5,
+    )
+
+    # El azar tampoco debe superar el tope configurado.
+    return min(segundos_maximos, espera_con_azar)
 
 
-class CentralClient:
-    """Tareas de fondo que mantienen vivo el enlace con el servidor central."""
+class ClienteCentral:
+    """Mantiene el enlace con el servidor central mediante tareas de fondo."""
 
-    #: Intentos máximos para una sincronización puntual de historial.
-    _SYNC_ATTEMPTS = 3
+    # Número máximo de intentos para una sincronización puntual del historial.
+    _INTENTOS_SINCRONIZACION = 3
 
     def __init__(
-        self, settings: Settings, database: Database, clock: LamportClock
+        self,
+        configuracion: Configuracion,
+        base_datos: BaseDatos,
+        reloj: RelojLamport,
     ) -> None:
-        self.settings = settings
-        self.db = database
-        self.clock = clock
+        self.configuracion = configuracion
+        self.base_datos = base_datos
+        self.reloj = reloj
 
-        # ``online`` lo leen los endpoints (en hilos del threadpool) y lo
-        # escriben las tareas de fondo. Un bool es atómico en CPython, así que
-        # no hace falta un candado para este indicador.
-        self.online = False
+        # Indica si el central responde. Lo lee el endpoint /status y lo
+        # escriben las tareas de fondo. Mientras sea False, la cola de salida
+        # no intenta enviar nada.
+        self.en_linea = False
 
-        self._client: httpx.AsyncClient | None = None
-        self._stopped = False
-        self._sync_lock = asyncio.Lock()
+        # Cliente HTTP compartido por las tres tareas. Se crea en ``ejecutar``.
+        self._cliente_http: httpx.AsyncClient | None = None
 
-        # La primera sincronización tras arrancar pide el historial completo
-        # (since=0). Así, aunque una entrega anterior haya llegado fuera de
-        # orden, no dejamos huecos: la deduplicación por UUID hace que volver
-        # a pedir mensajes ya conocidos sea inofensivo. Las recuperaciones
-        # posteriores (sin reiniciar el proceso) usan la marca incremental.
-        self._startup_sync = True
+        # Bandera para pedir el apagado ordenado de las tareas.
+        self._detenido = False
 
-    @property
-    def is_online(self) -> bool:
-        return self.online
+        # La primera sincronización pide el historial completo (desde 0).
+        # Las recuperaciones posteriores, sin reiniciar el proceso, piden solo
+        # lo nuevo a partir de la última marca guardada.
+        self._sincronizacion_inicial = True
 
-    def request_stop(self) -> None:
-        """Pide a las tareas que terminen; el apagado real lo hace lifespan."""
-        self._stopped = True
+    def solicitar_apagado(self) -> None:
+        """Pide a las tareas que terminen cuando se apague el servidor."""
+        self._detenido = True
 
     # ------------------------------------------------------------------
     # Arranque
     # ------------------------------------------------------------------
 
-    async def run(self) -> None:
-        """Crea el cliente HTTP y lanza las tres tareas de fondo."""
-        timeout = httpx.Timeout(self.settings.request_timeout_seconds)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            self._client = client
+    async def ejecutar(self) -> None:
+        """Crea el cliente HTTP y lanza las tres tareas de fondo.
 
-            # Se crean tareas explícitas para poder cancelarlas todas si una
-            # falla o si la aplicación se apaga. Sin esto, una excepción en
-            # una tarea dejaría a las otras corriendo como huérfanas.
-            tasks = [
-                asyncio.create_task(self._registration_loop(), name="central-register"),
-                asyncio.create_task(self._heartbeat_loop(), name="central-heartbeat"),
-                asyncio.create_task(self._outbox_loop(), name="central-outbox"),
+        Las tres tareas avanzan en paralelo: mientras una espera la respuesta
+        del central, las otras pueden seguir trabajando.
+        """
+        # Tiempo máximo que se espera cualquier petición al central.
+        tiempo_espera = httpx.Timeout(self.configuracion.segundos_espera_peticion)
+
+        # "async with" abre el cliente HTTP y lo cierra al terminar.
+        async with httpx.AsyncClient(timeout=tiempo_espera) as cliente:
+            self._cliente_http = cliente
+
+            # Cada tarea se guarda en una lista para poder cancelarlas todas
+            # cuando el servidor se apague. Sin esto, una tarea podría quedar
+            # corriendo sola en segundo plano.
+            tareas = [
+                asyncio.create_task(self._bucle_registro(), name="registro-central"),
+                asyncio.create_task(self._bucle_latido(), name="latido-central"),
+                asyncio.create_task(self._bucle_cola_salida(), name="cola-central"),
             ]
+
             try:
-                await asyncio.gather(*tasks)
+                # Espera a que las tres terminen. Solo terminan cuando se pide
+                # el apagado o cuando ocurre un error inesperado.
+                await asyncio.gather(*tareas)
             finally:
-                for task in tasks:
-                    task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
-                self._client = None
+                # Apagado ordenado: se cancelan y se espera a que suelten.
+                for tarea in tareas:
+                    tarea.cancel()
+                await asyncio.gather(*tareas, return_exceptions=True)
+                self._cliente_http = None
 
     # ------------------------------------------------------------------
     # Registro periódico
     # ------------------------------------------------------------------
 
-    async def _registration_loop(self) -> None:
-        """Renueva el registro cada ``REGISTER_INTERVAL_SECONDS``.
+    async def _bucle_registro(self) -> None:
+        """Registra el servidor en el central cada cierto tiempo.
 
-        El registro es idempotente en el central (upsert por nombre de
-        servidor), así que renovarlo no crea duplicados. Si falla, se
-        reintenta con espera exponencial + jitter, sin pasar del intervalo
-        normal de renovación.
+        El registro es idempotente: repetirlo con el mismo nombre solo
+        actualiza la dirección, no crea entradas repetidas. Se repite porque
+        el central puede reiniciarse y perder su lista de servidores.
         """
-        failures = 0
-        while not self._stopped:
-            success = await self._register_once()
-            interval = self.settings.register_interval_seconds
+        fallos = 0
 
-            if success:
-                failures = 0
-                # Pequeño jitter también en la renovación: si todos los
-                # grupos arrancan al mismo tiempo, no queremos que todos
-                # golpeen el central en el mismo instante.
-                delay = interval + random.uniform(0.0, interval * 0.1)
+        # El bucle se repite mientras no se haya pedido el apagado.
+        while not self._detenido:
+            exito = await self._registrar_una_vez()
+            intervalo = self.configuracion.segundos_entre_registros
+
+            if exito:
+                # Todo bien: se espera el intervalo normal, con un pequeño
+                # azar para no coincidir exactamente con otros grupos.
+                fallos = 0
+                espera = intervalo + random.uniform(0.0, intervalo * 0.1)
             else:
-                failures += 1
-                delay = min(
-                    interval,
-                    exponential_backoff(
-                        failures,
-                        self.settings.retry_base_seconds,
-                        self.settings.retry_max_seconds,
+                # Falló: se espera un tiempo que crece con cada fallo, pero
+                # nunca más que el intervalo normal de registro.
+                fallos += 1
+                espera = min(
+                    intervalo,
+                    calcular_espera_reintento(
+                        fallos,
+                        self.configuracion.segundos_base_reintento,
+                        self.configuracion.segundos_maximos_reintento,
                     ),
                 )
-                log_event(
+
+                registrar_evento(
                     "REINTENTO",
                     operacion="POST /register",
-                    intento_fallido=failures,
-                    espera=round(delay, 3),
+                    intento_fallido=fallos,
+                    espera=round(espera, 3),
                 )
 
-            await asyncio.sleep(delay)
+            # asyncio.sleep no bloquea el programa: mientras esta tarea
+            # duerme, las otras dos siguen funcionando.
+            await asyncio.sleep(espera)
 
-    async def _register_once(self) -> bool:
-        if self._client is None:
+    async def _registrar_una_vez(self) -> bool:
+        """Hace un único ``POST /register`` y dice si el central lo aceptó.
+
+        El cuerpo es exactamente el que pide el enunciado:
+        ``{"server": "g3", "url": "http://..."}``.
+        """
+        if self._cliente_http is None:
             return False
 
-        payload = RegisterRequest(
-            server=self.settings.group_name, url=self.settings.public_url
+        cuerpo = SolicitudRegistro(
+            server=self.configuracion.nombre_grupo,
+            url=self.configuracion.url_publica,
         ).model_dump()
 
         try:
-            response = await self._client.post(
-                f"{self.settings.central_url}/register", json=payload
+            respuesta = await self._cliente_http.post(
+                f"{self.configuracion.url_central}/register",
+                json=cuerpo,
             )
-        except httpx.HTTPError as exc:
-            log_event(
+        except httpx.HTTPError as error:
+            # No hubo respuesta: red caída, tiempo agotado, etc.
+            registrar_evento(
                 "REGISTRO_FALLO",
-                motivo=type(exc).__name__,
-                central=self.settings.central_url,
+                motivo=type(error).__name__,
+                central=self.configuracion.url_central,
             )
             return False
 
-        if 200 <= response.status_code < 300:
-            log_event(
+        # Cualquier código entre 200 y 299 significa que fue aceptado.
+        if 200 <= respuesta.status_code < 300:
+            registrar_evento(
                 "REGISTRO_OK",
-                servidor=self.settings.group_name,
-                url=self.settings.public_url,
+                servidor=self.configuracion.nombre_grupo,
+                url=self.configuracion.url_publica,
             )
             return True
 
-        log_event("REGISTRO_FALLO", status=response.status_code)
+        registrar_evento("REGISTRO_FALLO", status=respuesta.status_code)
         return False
 
     # ------------------------------------------------------------------
-    # Detección de fallos (heartbeat pull)
+    # Detección de fallos (latido consultado)
     # ------------------------------------------------------------------
 
-    async def _heartbeat_loop(self) -> None:
-        """Consulta GET /health y decide si el central está arriba o abajo."""
-        failures = 0
+    async def _bucle_latido(self) -> None:
+        """Pregunta periódicamente si el central está vivo.
 
-        while not self._stopped:
-            healthy = await self._check_health()
+        Regla:
 
-            if healthy:
-                failures = 0
-                if not self.online:
-                    # Primer contacto o vuelta de una caída: antes de enviar
-                    # nada, recuperamos el historial que nos perdimos.
-                    await self._recover()
+        - Si responde -> central arriba. Si estábamos caídos, se recupera.
+        - Si no responde -> se suma un fallo. Al llegar a
+          ``fallos_latido_para_caida`` fallos seguidos, se marca caído.
+        """
+        fallos = 0
+
+        while not self._detenido:
+            saludable = await self._consultar_salud()
+
+            if saludable:
+                fallos = 0
+
+                if not self.en_linea:
+                    # Primer contacto o regreso de una caída: antes de volver
+                    # a enviar, se recupera lo que nos perdimos.
+                    await self._recuperar()
             else:
-                failures += 1
-                if self.online and failures >= self.settings.heartbeat_failures:
-                    self.online = False
-                    log_event(
+                fallos += 1
+
+                if (
+                    self.en_linea
+                    and fallos >= self.configuracion.fallos_latido_para_caida
+                ):
+                    # Varios fallos seguidos: se declara caído. La cola de
+                    # salida dejará de intentar enviar.
+                    self.en_linea = False
+                    registrar_evento(
                         "CAÍDA_CENTRAL",
-                        intentos_fallidos=failures,
-                        mensajes_pendientes=self.db.pending_outbox_count(),
+                        intentos_fallidos=fallos,
+                        mensajes_pendientes=self.base_datos.contar_pendientes(),
                     )
-                elif not self.online and failures == self.settings.heartbeat_failures:
-                    log_event(
+                elif (
+                    not self.en_linea
+                    and fallos == self.configuracion.fallos_latido_para_caida
+                ):
+                    # Ya estaba caído: se registra una sola vez para no llenar
+                    # el log con el mismo aviso cada pocos segundos.
+                    registrar_evento(
                         "CENTRAL_NO_DISPONIBLE",
-                        intentos_fallidos=failures,
-                        nota="se sigue consultando el heartbeat",
+                        intentos_fallidos=fallos,
+                        nota="se sigue consultando el latido",
                     )
 
-            await asyncio.sleep(self.settings.heartbeat_interval_seconds)
+            await asyncio.sleep(self.configuracion.segundos_entre_latidos)
 
-    async def _check_health(self) -> bool:
-        if self._client is None:
+    async def _consultar_salud(self) -> bool:
+        """Hace un único ``GET /health`` y devuelve True si respondió bien.
+
+        Esta petición usa un tiempo de espera más corto que las demás, para
+        detectar rápido un central colgado.
+        """
+        if self._cliente_http is None:
             return False
+
         try:
-            response = await self._client.get(
-                f"{self.settings.central_url}/health",
-                timeout=self.settings.heartbeat_timeout_seconds,
+            respuesta = await self._cliente_http.get(
+                f"{self.configuracion.url_central}/health",
+                timeout=self.configuracion.segundos_espera_latido,
             )
         except httpx.HTTPError:
+            # Si la petición falla, el central no está disponible.
             return False
-        return 200 <= response.status_code < 300
+
+        return 200 <= respuesta.status_code < 300
 
     # ------------------------------------------------------------------
     # Recuperación de historial
     # ------------------------------------------------------------------
 
-    async def _recover(self) -> None:
-        """Renueva el registro y sincroniza el historial antes de volver a enviar."""
-        # Evita que dos heartbeats exitosos lancen dos sincronizaciones.
-        if self._sync_lock.locked():
+    async def _recuperar(self) -> None:
+        """Renueva el registro y sincroniza el historial antes de volver a enviar.
+
+        El orden es importante:
+
+        1. Renovar el registro (el central pudo reiniciarse y olvidarnos).
+        2. Pedir el historial que nos perdimos.
+        3. Solo entonces marcar ``en_linea = True``.
+
+        Si la sincronización falla, se sigue "caído" y se intenta de nuevo en
+        el siguiente latido. Es mejor no enviar a ciegas y arriesgar un
+        historial incompleto.
+        """
+        if self._detenido:
             return
 
-        async with self._sync_lock:
-            if self._stopped:
-                return
+        registrar_evento("RECUPERACIÓN_INICIO", central=self.configuracion.url_central)
 
-            log_event("RECUPERACIÓN_INICIO", central=self.settings.central_url)
+        # 1. Renovar el registro es barato e idempotente.
+        await self._registrar_una_vez()
 
-            # Si el central se reinició, pudo perder su registro en memoria.
-            # Renovar el registro es barato y idempotente.
-            await self._register_once()
-
-            if not await self._sync_history():
-                # No marcamos online: el próximo heartbeat volverá a intentar
-                # la recuperación. Es mejor no enviar a ciegas y arriesgar
-                # perder el orden del historial.
-                log_event(
-                    "RECUPERACIÓN_FALLO",
-                    nota="se reintentará en el próximo heartbeat",
-                )
-                return
-
-            self.online = True
-            log_event(
-                "RECUPERACIÓN_OK",
-                lamport=self.clock.value,
-                pendientes=self.db.pending_outbox_count(),
+        # 2. Traer el historial perdido.
+        if not await self._sincronizar_historial():
+            registrar_evento(
+                "RECUPERACIÓN_FALLO",
+                nota="se reintentará en el próximo latido",
             )
+            return
 
-    async def _sync_history(self) -> bool:
-        """Pide al central los mensajes posteriores a nuestra última marca.
-
-        ``last_history_lamport`` es la mayor marca de Lamport que hemos visto
-        procedente del central. Pedimos desde ``max(0, marca - 1)`` para
-        incluir mensajes que compartan la misma marca: el historial se ordena
-        por (lamport, origin) y varios orígenes pueden coincidir en lamport.
-        Pedir de más es inofensivo gracias a la deduplicación por UUID.
-        """
-        if self._client is None:
-            return False
-
-        since = int(self.db.get_state("last_history_lamport", "0") or 0)
-        if self._startup_sync:
-            request_since = 0
-            modo = "completa"
-        else:
-            # Se pide desde una marca anterior para incluir mensajes que
-            # compartan el mismo lamport. Pedir de más es inofensivo porque
-            # el receptor deduplica por UUID.
-            request_since = max(0, since - 1)
-            modo = "incremental"
-
-        log_event(
-            "HISTORIAL_INICIO",
-            modo=modo,
-            desde=request_since,
-            ultima_marca=since,
+        # 3. Recién ahora se permite enviar otra vez.
+        self.en_linea = True
+        registrar_evento(
+            "RECUPERACIÓN_OK",
+            lamport=self.reloj.valor,
+            pendientes=self.base_datos.contar_pendientes(),
         )
 
-        response: httpx.Response | None = None
-        last_reason = "sin respuesta"
+    async def _sincronizar_historial(self) -> bool:
+        """Pide al central los mensajes posteriores a nuestra última marca.
 
-        for attempt in range(1, self._SYNC_ATTEMPTS + 1):
+        En SQLite se guarda la clave ``last_history_lamport``: la mayor marca
+        de Lamport que hemos visto venir del central.
+
+        Al pedir el historial se usa ``desde = max(0, marca - 1)``. Se resta 1
+        a propósito para incluir los mensajes que comparten la misma marca,
+        porque el orden es ``(lamport, origin)`` y dos grupos pueden coincidir
+        en el número. Pedir de más no hace daño: el receptor deduplica por UUID.
+
+        La primera vez (al arrancar) se pide ``desde=0``: el historial completo,
+        para no dejar huecos.
+        """
+        if self._cliente_http is None:
+            return False
+
+        # Última marca de historial que quedó guardada.
+        marca_guardada = int(
+            self.base_datos.obtener_estado("last_history_lamport", "0") or 0
+        )
+
+        # En el arranque se pide todo; en una reconexión, solo lo nuevo.
+        if self._sincronizacion_inicial:
+            desde = 0
+            modo = "completa"
+        else:
+            desde = max(0, marca_guardada - 1)
+            modo = "incremental"
+
+        registrar_evento(
+            "HISTORIAL_INICIO",
+            modo=modo,
+            desde=desde,
+            ultima_marca=marca_guardada,
+        )
+
+        # --- 1. Pedir el historial, con reintentos. ---
+        respuesta: httpx.Response | None = None
+        ultimo_motivo = "sin respuesta"
+
+        for intento in range(1, self._INTENTOS_SINCRONIZACION + 1):
             try:
-                response = await self._client.get(
-                    f"{self.settings.central_url}/history",
-                    params={"since": request_since},
+                respuesta = await self._cliente_http.get(
+                    f"{self.configuracion.url_central}/history",
+                    params={"since": desde},
                 )
-            except httpx.HTTPError as exc:
-                response = None
-                last_reason = type(exc).__name__
+            except httpx.HTTPError as error:
+                # Error de red o tiempo agotado: se puede reintentar.
+                respuesta = None
+                ultimo_motivo = type(error).__name__
             else:
-                if 200 <= response.status_code < 300:
+                if 200 <= respuesta.status_code < 300:
+                    # Respuesta correcta: se sale del bucle de reintentos.
                     break
-                if 400 <= response.status_code < 500:
-                    # Un 4xx es un error del cliente/protocolo: reintentarlo
-                    # no lo va a arreglar.
-                    log_event(
+
+                if 400 <= respuesta.status_code < 500:
+                    # Un 4xx indica un error en la petición. Reintentarla no
+                    # lo va a arreglar.
+                    registrar_evento(
                         "HISTORIAL_FALLO",
-                        status=response.status_code,
+                        status=respuesta.status_code,
                         motivo="4xx no se reintenta",
                     )
                     return False
-                last_reason = f"HTTP {response.status_code}"
-                response = None
 
-            if attempt < self._SYNC_ATTEMPTS:
-                delay = exponential_backoff(
-                    attempt,
-                    self.settings.retry_base_seconds,
-                    self.settings.retry_max_seconds,
+                # Un 5xx es un fallo temporal del central: se reintenta.
+                ultimo_motivo = f"HTTP {respuesta.status_code}"
+                respuesta = None
+
+            # Si todavía quedan intentos, se espera antes del siguiente.
+            if intento < self._INTENTOS_SINCRONIZACION:
+                espera = calcular_espera_reintento(
+                    intento,
+                    self.configuracion.segundos_base_reintento,
+                    self.configuracion.segundos_maximos_reintento,
                 )
-                log_event(
+                registrar_evento(
                     "REINTENTO",
                     operacion="GET /history",
-                    intento_fallido=attempt,
-                    proximo_intento=attempt + 1,
-                    espera=round(delay, 3),
-                    motivo=last_reason,
+                    intento_fallido=intento,
+                    proximo_intento=intento + 1,
+                    espera=round(espera, 3),
+                    motivo=ultimo_motivo,
                 )
-                await asyncio.sleep(delay)
+                await asyncio.sleep(espera)
 
-        if response is None:
-            log_error("HISTORIAL_FALLO", motivo=last_reason)
+        if respuesta is None:
+            registrar_error("HISTORIAL_FALLO", motivo=ultimo_motivo)
             return False
 
+        # --- 2. Leer el JSON de la respuesta. ---
         try:
-            payload: Any = response.json()
+            datos = respuesta.json()
         except ValueError:
-            log_error("HISTORIAL_FALLO", motivo="respuesta no es JSON")
+            registrar_error("HISTORIAL_FALLO", motivo="la respuesta no es JSON")
             return False
 
-        # La especificación publicada manda; se aceptan las dos formas más
-        # habituales para no romper la interoperabilidad: lista directa o
-        # {"messages": [...]}.
-        if isinstance(payload, list):
-            raw_messages = payload
-        elif isinstance(payload, dict):
-            raw_messages = payload.get("messages", payload.get("history", []))
+        # El contrato admite una lista directa o un objeto con "messages".
+        # Se aceptan las dos formas para no romper la interoperabilidad.
+        if isinstance(datos, list):
+            mensajes_recibidos = datos
+        elif isinstance(datos, dict):
+            mensajes_recibidos = datos.get("messages", datos.get("history", []))
         else:
-            log_error("HISTORIAL_FALLO", motivo="forma de respuesta no reconocida")
+            registrar_error(
+                "HISTORIAL_FALLO", motivo="forma de respuesta no reconocida"
+            )
             return False
 
-        if not isinstance(raw_messages, list):
-            log_error("HISTORIAL_FALLO", motivo="campo messages no es una lista")
+        if not isinstance(mensajes_recibidos, list):
+            registrar_error(
+                "HISTORIAL_FALLO", motivo="el campo messages no es una lista"
+            )
             return False
 
-        max_lamport = since
-        new_count = 0
+        # --- 3. Guardar los mensajes nuevos y descartar los repetidos. ---
+        marca_maxima = marca_guardada
+        nuevos = 0
 
-        for raw in raw_messages:
-            if not isinstance(raw, dict):
-                log_event("MENSAJE_INVALIDO", origen="historial", motivo="no es objeto")
-                continue
-            try:
-                message = Message.model_validate(raw)
-            except ValidationError as exc:
-                log_event(
+        for mensaje_crudo in mensajes_recibidos:
+            if not isinstance(mensaje_crudo, dict):
+                registrar_evento(
                     "MENSAJE_INVALIDO",
                     origen="historial",
-                    motivo=exc.errors()[0].get("msg", "error de validación"),
+                    motivo="no es un objeto",
                 )
                 continue
 
-            max_lamport = max(max_lamport, message.lamport)
+            try:
+                mensaje = Mensaje.model_validate(mensaje_crudo)
+            except ValidationError as error:
+                registrar_evento(
+                    "MENSAJE_INVALIDO",
+                    origen="historial",
+                    motivo=error.errors()[0].get("msg", "error de validación"),
+                )
+                continue
 
-            if self.db.insert_message(message):
-                # Solo los mensajes nuevos mueven el reloj. Si moviéramos el
-                # reloj con cada duplicado, una simple resincronización
-                # inflaría el contador sin motivo.
-                new_clock = self.clock.observe(message.lamport)
-                new_count += 1
-                log_event(
+            marca_maxima = max(marca_maxima, mensaje.lamport)
+
+            if self.base_datos.insertar_mensaje(mensaje):
+                # Mensaje nuevo: se aplica la regla de recepción de Lamport,
+                # L = max(L, L_recibido) + 1. Solo se hace con mensajes nuevos;
+                # si se hiciera con duplicados, cada resincronización inflaría
+                # el reloj sin motivo.
+                nuevo_valor_reloj = self.reloj.observar(mensaje.lamport)
+                nuevos += 1
+                registrar_evento(
                     "RECEPCIÓN",
                     origen="historial",
-                    id=message.id,
-                    lamport=message.lamport,
-                    lamport_local=new_clock,
+                    id=mensaje.id,
+                    lamport=mensaje.lamport,
+                    lamport_local=nuevo_valor_reloj,
                 )
             else:
-                log_event(
+                # insertar_mensaje devuelve False cuando el UUID ya existía.
+                registrar_evento(
                     "DESCARTE_DUPLICADO",
                     origen="historial",
-                    id=message.id,
-                    lamport=message.lamport,
+                    id=mensaje.id,
+                    lamport=mensaje.lamport,
                 )
 
-        self.db.advance_state_int("last_history_lamport", max_lamport)
-        self._startup_sync = False
-        log_event(
+        # --- 4. Guardar la nueva marca y terminar. ---
+        self.base_datos.avanzar_estado_entero("last_history_lamport", marca_maxima)
+        self._sincronizacion_inicial = False
+        registrar_evento(
             "HISTORIAL_SINCRONIZADO",
-            desde=request_since,
-            nuevos=new_count,
-            total_recibidos=len(raw_messages),
-            lamport_historial=max_lamport,
+            desde=desde,
+            nuevos=nuevos,
+            total_recibidos=len(mensajes_recibidos),
+            lamport_historial=marca_maxima,
         )
         return True
 
@@ -423,103 +542,148 @@ class CentralClient:
     # Cola de salida y reintentos
     # ------------------------------------------------------------------
 
-    async def _outbox_loop(self) -> None:
-        """Envía los mensajes pendientes cuando el central está disponible."""
-        while not self._stopped:
-            if not self.online or self._client is None:
-                # Mientras el central está caído, los mensajes se acumulan en
-                # SQLite. No se pierden si el servidor se reinicia.
+    async def _bucle_cola_salida(self) -> None:
+        """Envía los mensajes pendientes cuando el central está disponible.
+
+        La cola vive en SQLite (tabla ``outbox``). Un mensaje sale de la cola
+        SOLO cuando el central confirma con 2xx. Si el servidor se reinicia,
+        los pendientes siguen ahí y se reintentan con el mismo UUID.
+        """
+        while not self._detenido:
+            if not self.en_linea or self._cliente_http is None:
+                # Central caído: los mensajes se quedan guardados y se espera.
                 await asyncio.sleep(0.5)
                 continue
 
             try:
-                due = self.db.get_due_outbox(time.time(), limit=20)
-            except Exception as exc:  # noqa: BLE001 - una tarea no debe morir
-                log_error("ERROR", "no se pudo leer la cola", detalle=repr(exc))
+                # Mensajes cuyo próximo intento ya venció.
+                pendientes = self.base_datos.obtener_cola_pendiente(
+                    time.time(), limite=20
+                )
+            except Exception as error:  # noqa: BLE001
+                # Una tarea de fondo no debe morir por un error de lectura.
+                registrar_error("ERROR", "no se pudo leer la cola", detalle=repr(error))
                 await asyncio.sleep(1.0)
                 continue
 
-            if not due:
+            if not pendientes:
+                # No hay nada para enviar: se revisa de nuevo en medio segundo.
                 await asyncio.sleep(0.5)
                 continue
 
-            for item in due:
-                if self._stopped or not self.online:
+            for elemento in pendientes:
+                # Se comprueba otra vez por si el central se cayó a mitad.
+                if self._detenido or not self.en_linea:
                     break
-                await self._send_outbox_item(item)
+                await self._enviar_elemento_cola(elemento)
 
             await asyncio.sleep(0.1)
 
-    async def _send_outbox_item(self, item: OutboxItem) -> None:
-        if self._client is None:
+    async def _enviar_elemento_cola(self, elemento: ElementoColaSalida) -> None:
+        """Envía un mensaje al central y decide qué hacer según la respuesta.
+
+        El comportamiento ante cada respuesta es la clave de la entrega
+        "al menos una vez":
+
+        - **2xx**: el central lo aceptó -> se elimina de la cola.
+        - **4xx**: el mensaje tiene un error -> no se reintenta, se descarta.
+        - **5xx o error de red**: fallo temporal -> se reprograma el reintento.
+        """
+        if self._cliente_http is None:
             return
 
-        message = item.message
-        attempt = item.attempts + 1
+        mensaje = elemento.mensaje
+        intento = elemento.intentos + 1
 
-        log_event(
+        registrar_evento(
             "ENVÍO",
             destino="central",
-            id=message.id,
-            lamport=message.lamport,
-            intento=attempt,
+            id=mensaje.id,
+            lamport=mensaje.lamport,
+            intento=intento,
         )
 
         try:
-            response = await self._client.post(
-                f"{self.settings.central_url}/messages",
-                json=message.to_protocol_dict(),
+            respuesta = await self._cliente_http.post(
+                f"{self.configuracion.url_central}/messages",
+                json=mensaje.a_diccionario_protocolo(),
             )
-        except httpx.HTTPError as exc:
-            self._schedule_retry(message, item.attempts, type(exc).__name__)
+        except httpx.HTTPError as error:
+            # Sin respuesta: el mensaje sigue en la cola y se reintentará más
+            # tarde con el MISMO id.
+            self._programar_reintento(
+                mensaje,
+                elemento.intentos,
+                type(error).__name__,
+            )
             return
 
-        if 200 <= response.status_code < 300:
-            # El central confirmó. Solo ahora quitamos el mensaje de la cola:
-            # si el proceso muere antes, se reenviará con el mismo id y el
-            # central lo deduplicará.
-            self.db.remove_outbox(message.id)
-            log_event(
+        if 200 <= respuesta.status_code < 300:
+            # Confirmado. Solo ahora se quita de la cola: si el proceso muere
+            # justo antes, al reiniciar se reenvía con el mismo id y el central
+            # lo deduplica.
+            self.base_datos.quitar_de_cola(mensaje.id)
+            registrar_evento(
                 "ENVÍO_OK",
-                id=message.id,
-                lamport=message.lamport,
-                status=response.status_code,
+                id=mensaje.id,
+                lamport=mensaje.lamport,
+                status=respuesta.status_code,
             )
             return
 
-        if 400 <= response.status_code < 500:
-            # El protocolo dice que un 4xx no se reintenta. Se descarta y se
-            # deja rastro para poder explicarlo en la bitácora.
-            self.db.remove_outbox(message.id)
-            log_event(
+        if 400 <= respuesta.status_code < 500:
+            # El protocolo dice que un 4xx no se reintenta: el error está en el
+            # mensaje. Se descarta y se deja rastro en el log.
+            self.base_datos.quitar_de_cola(mensaje.id)
+            registrar_evento(
                 "DESCARTE_4XX",
-                id=message.id,
-                lamport=message.lamport,
-                status=response.status_code,
-                detalle=response.text[:160].replace("\n", " "),
+                id=mensaje.id,
+                lamport=mensaje.lamport,
+                status=respuesta.status_code,
+                detalle=respuesta.text[:160].replace("\n", " "),
             )
             return
 
-        # 5xx: el central falló temporalmente. Se reintenta.
-        self._schedule_retry(message, item.attempts, f"HTTP {response.status_code}")
-
-    def _schedule_retry(
-        self, message: Message, previous_attempts: int, reason: str
-    ) -> None:
-        attempts = previous_attempts + 1
-        delay = exponential_backoff(
-            attempts,
-            self.settings.retry_base_seconds,
-            self.settings.retry_max_seconds,
+        # 5xx: el central falló temporalmente. Se reprograma el reintento.
+        self._programar_reintento(
+            mensaje,
+            elemento.intentos,
+            f"HTTP {respuesta.status_code}",
         )
-        next_retry_at = time.time() + delay
-        self.db.schedule_outbox_retry(message.id, attempts, next_retry_at)
-        log_event(
+
+    def _programar_reintento(
+        self,
+        mensaje: Mensaje,
+        intentos_previos: int,
+        motivo: str,
+    ) -> None:
+        """Deja un mensaje en la cola para intentarlo de nuevo más adelante.
+
+        Aumenta el contador de intentos, calcula la espera con la fórmula
+        exponencial con azar y guarda en SQLite a qué hora toca el próximo
+        intento. Todo queda persistido: sobrevive a un reinicio.
+        """
+        intentos = intentos_previos + 1
+
+        espera = calcular_espera_reintento(
+            intentos,
+            self.configuracion.segundos_base_reintento,
+            self.configuracion.segundos_maximos_reintento,
+        )
+        proximo_intento_en = time.time() + espera
+
+        self.base_datos.programar_reintento_cola(
+            mensaje.id,
+            intentos,
+            proximo_intento_en,
+        )
+
+        registrar_evento(
             "REINTENTO",
-            id=message.id,
-            lamport=message.lamport,
-            intento_fallido=attempts,
-            proximo_intento=attempts + 1,
-            espera=round(delay, 3),
-            motivo=reason,
+            id=mensaje.id,
+            lamport=mensaje.lamport,
+            intento_fallido=intentos,
+            proximo_intento=intentos + 1,
+            espera=round(espera, 3),
+            motivo=motivo,
         )

@@ -8,7 +8,7 @@ Expone dos grupos de endpoints:
   GET /fed/health y POST /fed/messages.
 
 El servidor guarda todo en SQLite, mantiene un reloj de Lamport persistente y
-delega el envío/reintento al central en ``CentralClient``, que corre como
+delega el envío/reintento al central en ``ClienteCentral``, que corre como
 tarea de fondo desde el arranque.
 """
 
@@ -20,93 +20,97 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, HTTPException, Query, status
 
-from app.central_client import CentralClient
-from app.config import load_settings
-from app.database import Database
-from app.lamport import LamportClock
-from app.logger import log_error, log_event, setup_logging
+from app.central_client import ClienteCentral
+from app.config import cargar_configuracion
+from app.database import BaseDatos
+from app.lamport import RelojLamport
+from app.logger import configurar_registros, registrar_error, registrar_evento
 from app.models import (
-    FedHealth,
-    FedReceiveResponse,
-    HealthResponse,
-    Message,
-    MessageList,
-    SendMessageRequest,
-    ServerStatus,
-    ServiceInfo,
-    UserCreate,
-    UserInfo,
-    UserList,
-    utc_now_iso,
+    EstadoServidor,
+    InfoServicio,
+    InfoUsuario,
+    ListaMensajes,
+    ListaUsuarios,
+    Mensaje,
+    RespuestaRecepcionFederada,
+    RespuestaSalud,
+    SaludFederada,
+    SolicitudCreacionUsuario,
+    SolicitudEnvioMensaje,
+    ahora_utc_iso,
 )
 
 # ---------------------------------------------------------------------------
 # Composición de la aplicación
 # ---------------------------------------------------------------------------
 
-settings = load_settings()
-setup_logging(settings.log_level, settings.group_name)
+configuracion = cargar_configuracion()
+configurar_registros(configuracion.nivel_registro, configuracion.nombre_grupo)
 
-database = Database(settings.db_path)
-database.init_schema()
-clock = LamportClock(database)
-central_client = CentralClient(settings, database, clock)
+base_datos = BaseDatos(configuracion.ruta_base_datos)
+base_datos.crear_esquema()
+reloj = RelojLamport(base_datos)
+cliente_central = ClienteCentral(configuracion, base_datos, reloj)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def ciclo_vida(_: FastAPI):
     """Arranca y detiene las tareas de fondo junto con el servidor."""
-    log_event(
+    registrar_evento(
         "ARRANQUE",
-        servidor=settings.group_name,
-        url_publica=settings.public_url,
-        central=settings.central_url,
-        db=settings.db_path,
+        servidor=configuracion.nombre_grupo,
+        url_publica=configuracion.url_publica,
+        central=configuracion.url_central,
+        db=configuracion.ruta_base_datos,
     )
 
-    central_task = asyncio.create_task(
-        central_client.run(), name=f"central-client-{settings.group_name}"
+    tarea_central = asyncio.create_task(
+        cliente_central.ejecutar(),
+        name=f"cliente-central-{configuracion.nombre_grupo}",
     )
 
-    def _report_task_end(task: asyncio.Task[None]) -> None:
+    def _reportar_fin_tarea(tarea: asyncio.Task[None]) -> None:
         """Si la tarea muere por un error inesperado, que quede en el log."""
-        if task.cancelled():
+        if tarea.cancelled():
             return
-        error = task.exception()
+
+        error = tarea.exception()
         if error is not None:
-            log_error(
+            registrar_error(
                 "ERROR",
                 "la tarea del cliente central terminó",
                 detalle=repr(error),
             )
 
-    central_task.add_done_callback(_report_task_end)
+    tarea_central.add_done_callback(_reportar_fin_tarea)
 
     try:
         yield
     finally:
-        central_client.request_stop()
-        central_task.cancel()
+        cliente_central.solicitar_apagado()
+        tarea_central.cancel()
+
         with suppress(asyncio.CancelledError):
-            await central_task
-        database.close()
-        log_event("APAGADO", servidor=settings.group_name)
+            await tarea_central
+
+        base_datos.cerrar()
+        registrar_evento("APAGADO", servidor=configuracion.nombre_grupo)
 
 
 app = FastAPI(
-    title=f"Chat distribuido - {settings.group_name}",
+    title=f"Chat distribuido - {configuracion.nombre_grupo}",
     version="1.0.0",
     description=(
         "Servidor de grupo para la sala global #general. "
         "Arquitectura en estrella: todo pasa por el servidor central."
     ),
-    lifespan=lifespan,
+    lifespan=ciclo_vida,
 )
 
 
-def _identity(username: str) -> str:
+def _identidad(nombre_usuario: str) -> str:
     """Identificador visible del usuario, por ejemplo ana@g3."""
-    return f"{username}@{settings.group_name}"
+    return f"{nombre_usuario}@{configuracion.nombre_grupo}"
 
 
 # ---------------------------------------------------------------------------
@@ -114,32 +118,36 @@ def _identity(username: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-@app.get("/", response_model=ServiceInfo, tags=["info"])
-def service_info() -> ServiceInfo:
+@app.get("/", response_model=InfoServicio, tags=["info"])
+def informacion_servicio() -> InfoServicio:
     """Datos útiles para saber a qué servidor estamos conectados."""
-    return ServiceInfo(
-        server=settings.group_name,
-        public_url=settings.public_url,
-        central_url=settings.central_url,
-        lamport=clock.value,
+    return InfoServicio(
+        server=configuracion.nombre_grupo,
+        public_url=configuracion.url_publica,
+        central_url=configuracion.url_central,
+        lamport=reloj.valor,
     )
 
 
-@app.get("/health", response_model=HealthResponse, tags=["info"])
-def health() -> HealthResponse:
+@app.get("/health", response_model=RespuestaSalud, tags=["info"])
+def salud() -> RespuestaSalud:
     """Salud del propio servidor de grupo (la usa el healthcheck de Docker)."""
-    return HealthResponse(status="ok", server=settings.group_name, lamport=clock.value)
+    return RespuestaSalud(
+        status="ok",
+        server=configuracion.nombre_grupo,
+        lamport=reloj.valor,
+    )
 
 
-@app.get("/status", response_model=ServerStatus, tags=["info"])
-def server_status() -> ServerStatus:
+@app.get("/status", response_model=EstadoServidor, tags=["info"])
+def estado_servidor() -> EstadoServidor:
     """Estado que usa el CLI y el script del experimento."""
-    return ServerStatus(
-        server=settings.group_name,
-        lamport=clock.value,
-        central_online=central_client.is_online,
-        pending_messages=database.pending_outbox_count(),
-        users=database.count_users(),
+    return EstadoServidor(
+        server=configuracion.nombre_grupo,
+        lamport=reloj.valor,
+        central_online=cliente_central.en_linea,
+        pending_messages=base_datos.contar_pendientes(),
+        users=base_datos.contar_usuarios(),
     )
 
 
@@ -150,29 +158,32 @@ def server_status() -> ServerStatus:
 
 @app.post(
     "/users",
-    response_model=UserInfo,
+    response_model=InfoUsuario,
     status_code=status.HTTP_201_CREATED,
     tags=["local"],
 )
-def create_user(payload: UserCreate) -> UserInfo:
+def crear_usuario(datos: SolicitudCreacionUsuario) -> InfoUsuario:
     """Crea un usuario local del grupo."""
-    if not database.add_user(payload.username):
+    if not base_datos.agregar_usuario(datos.username):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"El usuario {payload.username!r} ya existe",
+            detail=f"El usuario {datos.username!r} ya existe",
         )
 
-    log_event("USUARIO_CREADO", usuario=_identity(payload.username))
-    return UserInfo(username=payload.username, identity=_identity(payload.username))
+    registrar_evento("USUARIO_CREADO", usuario=_identidad(datos.username))
+    return InfoUsuario(
+        username=datos.username,
+        identity=_identidad(datos.username),
+    )
 
 
-@app.get("/users", response_model=UserList, tags=["local"])
-def list_users() -> UserList:
+@app.get("/users", response_model=ListaUsuarios, tags=["local"])
+def listar_usuarios() -> ListaUsuarios:
     """Lista los usuarios locales con su identidad completa usuario@gN."""
-    return UserList(
+    return ListaUsuarios(
         users=[
-            UserInfo(username=name, identity=_identity(name))
-            for name in database.list_users()
+            InfoUsuario(username=nombre, identity=_identidad(nombre))
+            for nombre in base_datos.listar_usuarios()
         ]
     )
 
@@ -184,11 +195,11 @@ def list_users() -> UserList:
 
 @app.post(
     "/messages",
-    response_model=Message,
+    response_model=Mensaje,
     status_code=status.HTTP_201_CREATED,
     tags=["local"],
 )
-def send_message(payload: SendMessageRequest) -> Message:
+def enviar_mensaje(datos: SolicitudEnvioMensaje) -> Mensaje:
     """Un usuario local escribe en #general.
 
     El mensaje se guarda de inmediato en el historial local y se encola para
@@ -196,29 +207,29 @@ def send_message(payload: SendMessageRequest) -> Message:
     conversando aunque el central esté caído; la entrega queda a cargo de la
     cola persistente.
     """
-    if not database.user_exists(payload.user):
+    if not base_datos.existe_usuario(datos.user):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"El usuario {payload.user!r} no existe. Créalo con POST /users",
+            detail=f"El usuario {datos.user!r} no existe. Créalo con POST /users",
         )
 
     # Regla de Lamport para emisión: incrementar antes de enviar.
-    lamport = clock.tick()
+    lamport = reloj.avanzar()
 
     # Se genera el UUID en el origen. Este id viaja sin cambios en todos los
     # reintentos y es la clave que usan los receptores para deduplicar.
-    message = Message.model_validate(
+    mensaje = Mensaje.model_validate(
         {
             "id": str(uuid.uuid4()),
-            "from": _identity(payload.user),
-            "origin": settings.group_name,
+            "from": _identidad(datos.user),
+            "origin": configuracion.nombre_grupo,
             "lamport": lamport,
-            "sent_at": utc_now_iso(),
-            "body": payload.body,
+            "sent_at": ahora_utc_iso(),
+            "body": datos.body,
         }
     )
 
-    if not database.insert_message(message):
+    if not base_datos.insertar_mensaje(mensaje):
         # Con UUIDv4 la colisión es prácticamente imposible; si ocurriera,
         # preferimos fallar de forma visible antes que reutilizar un id.
         raise HTTPException(
@@ -228,20 +239,20 @@ def send_message(payload: SendMessageRequest) -> Message:
 
     # La cola es persistente: si el central está caído o el proceso se
     # reinicia, el mensaje sigue pendiente y se reintenta más tarde.
-    database.enqueue_outbox(message.id)
+    base_datos.encolar_salida(mensaje.id)
 
-    log_event(
+    registrar_evento(
         "MENSAJE_LOCAL",
-        usuario=message.from_,
-        id=message.id,
-        lamport=message.lamport,
-        pendientes=database.pending_outbox_count(),
+        usuario=mensaje.from_,
+        id=mensaje.id,
+        lamport=mensaje.lamport,
+        pendientes=base_datos.contar_pendientes(),
     )
-    return message
+    return mensaje
 
 
-@app.get("/messages", response_model=MessageList, tags=["local"])
-def list_messages(
+@app.get("/messages", response_model=ListaMensajes, tags=["local"])
+def listar_mensajes(
     since: int = Query(
         0,
         ge=0,
@@ -251,9 +262,9 @@ def list_messages(
         ),
     ),
     limit: int = Query(500, ge=1, le=5000),
-) -> MessageList:
+) -> ListaMensajes:
     """Historial local ordenado por (lamport, origin)."""
-    return MessageList(messages=database.list_messages(since, limit))
+    return ListaMensajes(messages=base_datos.listar_mensajes(since, limit))
 
 
 # ---------------------------------------------------------------------------
@@ -261,42 +272,57 @@ def list_messages(
 # ---------------------------------------------------------------------------
 
 
-@app.get("/fed/health", response_model=FedHealth, tags=["federado"])
-def fed_health() -> FedHealth:
-    """Heartbeat del servidor de grupo, visto desde el central."""
-    return FedHealth(server=settings.group_name, lamport=clock.value)
+@app.get("/fed/health", response_model=SaludFederada, tags=["federado"])
+def salud_federada() -> SaludFederada:
+    """Latido del servidor de grupo, visto desde el central."""
+    return SaludFederada(
+        server=configuracion.nombre_grupo,
+        lamport=reloj.valor,
+    )
 
 
-@app.post("/fed/messages", response_model=FedReceiveResponse, tags=["federado"])
-def receive_fed_message(message: Message) -> FedReceiveResponse:
+@app.post(
+    "/fed/messages",
+    response_model=RespuestaRecepcionFederada,
+    tags=["federado"],
+)
+def recibir_mensaje_federado(mensaje: Mensaje) -> RespuestaRecepcionFederada:
     """Recibe un mensaje reenviado por el central.
 
     Es idempotente: si el UUID ya existe, responde 200 sin duplicar nada.
     Esto es obligatorio porque el emisor no puede distinguir entre "no llegó"
     y "llegó pero se perdió la respuesta"; por eso puede reenviar el mismo id.
     """
-    if not database.insert_message(message):
-        log_event(
+    if not base_datos.insertar_mensaje(mensaje):
+        registrar_evento(
             "DESCARTE_DUPLICADO",
             origen="central",
-            id=message.id,
-            lamport=message.lamport,
+            id=mensaje.id,
+            lamport=mensaje.lamport,
         )
-        return FedReceiveResponse(status="duplicate", id=message.id, duplicate=True)
+        return RespuestaRecepcionFederada(
+            status="duplicate",
+            id=mensaje.id,
+            duplicate=True,
+        )
 
     # Recepción nueva: L = max(L, L_recibido) + 1.
-    new_clock = clock.observe(message.lamport)
+    nuevo_valor_reloj = reloj.observar(mensaje.lamport)
 
     # Recordamos hasta dónde hemos visto el historial del central. Tras una
     # caída pediremos GET /history?since=esta_marca.
-    database.advance_state_int("last_history_lamport", message.lamport)
+    base_datos.avanzar_estado_entero("last_history_lamport", mensaje.lamport)
 
-    log_event(
+    registrar_evento(
         "RECEPCIÓN",
         origen="central",
-        usuario=message.from_,
-        id=message.id,
-        lamport=message.lamport,
-        lamport_local=new_clock,
+        usuario=mensaje.from_,
+        id=mensaje.id,
+        lamport=mensaje.lamport,
+        lamport_local=nuevo_valor_reloj,
     )
-    return FedReceiveResponse(status="received", id=message.id, duplicate=False)
+    return RespuestaRecepcionFederada(
+        status="received",
+        id=mensaje.id,
+        duplicate=False,
+    )
