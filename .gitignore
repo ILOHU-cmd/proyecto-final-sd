@@ -22,3 +22,6 @@ data/
 # Herramientas de desarrollo
 .ruff_cache/
 .mypy_cache/
+
+# Enunciado del curso (material del profesor, no es código del repositorio)
+proyecto_final_v2.md
