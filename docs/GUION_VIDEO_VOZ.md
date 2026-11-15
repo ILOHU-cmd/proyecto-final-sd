@@ -45,6 +45,42 @@ arriba a la derecha.
 | 2:41–2:50 | 25 | Resumen: Lamport ordena los eventos; el UUID evita duplicados; la *outbox* con *backoff* garantiza entrega al menos una vez; y el historial repara lo que se perdió. Cuatro mensajes, dos servidores y la cola vacía. |
 | 2:50–2:59 | Outro | Tres ideas para recordar: Lamport ordena; el UUID nace en el origen y no cambia; la *outbox* persistente y el historial permiten seguir escribiendo si el central cae. Gracias. |
 
+## Timeline exacta (referencia)
+
+| Paso | Entra en | Título |
+|---|---|---|
+| 0 | 0:05.4 | El central está en línea |
+| 1 | 0:11.4 | g3 arranca y lanza sus tareas de fondo |
+| 2 | 0:17.4 | g3 se registra en el central |
+| 3 | 0:23.4 | g3 sincroniza el historial |
+| 4 | 0:29.9 | g3b también se registra |
+| 5 | 0:35.4 | ana escribe en #general |
+| 6 | 0:41.0 | g3 valida al usuario |
+| 7 | 0:46.0 | g3 avanza su reloj: L = 1 |
+| 8 | 0:52.0 | g3 guarda el mensaje y lo encola |
+| 9 | 0:55.8 (visible durante la demo; narración desde 0:57) | g3 responde 201 al cliente |
+| 10 | 1:02.0 | La cola de salida despierta |
+| 11 | 1:07.5 | POST /messages al central |
+| 12 | 1:13.5 | El central deduplica y guarda |
+| 13 | 1:20.0 | El central reenvía a los demás grupos |
+| 14 | 1:26.0 | g3b recibe el mensaje |
+| 15 | 1:32.0 | g3b sincroniza su reloj: L = 2 |
+| 16 | 1:38.5 | El central confirma y g3 vacía la cola |
+| 17 | 1:44.1 | ana vuelve a escribir: L = 2 |
+| 18 | 1:50.1 | El central guarda L=2 y g3b observa L=3 |
+| 19 | 1:57.6 | beto responde desde g3b: L = 4 |
+| 20 | 2:03.6 | El central reenvía L=4 y g3 observa L=5 |
+| 21 | 2:11.6 | Duplicado: el mismo UUID no se procesa dos veces |
+| 22 | 2:18.2 | Fallo 500: reintento con espera exponencial |
+| 23 | 2:25.7 | El central se cae: el latido lo detecta |
+| 24 | 2:32.7 | El central vuelve: registro, historial y drenaje |
+| 25 | 2:41.2 | Resumen: cuatro mensajes, cero pendientes |
+| Demo | 0:53.2 | pausa, retrocede al 7, avanza al 8 y al 9, reanuda |
+| Outro | 2:50.2 | tres ideas para recordar |
+
+> La demo de controles va de **0:53.2** a **0:57.0**. El paso 9 ya se ve
+> desde 0:55.8, pero la narración continua empieza al reanudar, en 0:57.
+
 ## Versión seguida (para leer de corrido)
 
 > Unas **490 palabras**: a 160 palabras por minuto dura aproximadamente 3:00.
