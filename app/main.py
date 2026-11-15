@@ -289,9 +289,15 @@ def salud_federada() -> SaludFederada:
 def recibir_mensaje_federado(mensaje: Mensaje) -> RespuestaRecepcionFederada:
     """Recibe un mensaje reenviado por el central.
 
-    Es idempotente: si el UUID ya existe, responde 200 sin duplicar nada.
-    Esto es obligatorio porque el emisor no puede distinguir entre "no llegó"
-    y "llegó pero se perdió la respuesta"; por eso puede reenviar el mismo id.
+    Es idempotente: si el UUID ya existe, responde 200 con
+    duplicate=true y no modifica nada: ni el historial ni el reloj
+    de Lamport, porque un reintento no es un evento nuevo.
+    Esto es obligatorio porque el emisor no puede distinguir entre
+    "no llegó" y "llegó pero se perdió la respuesta"; por eso puede
+    reenviar el mismo id.
+
+    Los campos JSON desconocidos se ignoran (extra="ignore").
+    Un id que no sea un UUID válido responde 422.
     """
     if not base_datos.insertar_mensaje(mensaje):
         registrar_evento(
