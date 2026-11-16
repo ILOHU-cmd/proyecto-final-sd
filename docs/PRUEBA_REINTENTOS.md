@@ -144,3 +144,78 @@ Casos incluidos en `tests/test_backoff.py`:
 - nunca supera el tope;
 - tiene azar (dos corridas dan valores distintos);
 - un intento 0 o negativo no produce una espera inválida.
+
+## 8. Participación de Mariana: CLI, Docker y experimento
+
+Esta sección corresponde al bloque de Mariana en el plan de trabajo. La
+responsabilidad es entregar el cliente de consola, el empaquetado reproducible
+con Docker y la medición de una caída de servidor.
+
+### 8.1 Pruebas automatizadas
+
+En `tests/test_cli.py` se verifican:
+
+- el formato de un mensaje propio y la marca de Lamport;
+- la distinción visual de un mensaje proveniente de otro grupo;
+- la lectura de los argumentos del experimento;
+- el rechazo de URLs iguales para emisor y objetivo;
+- el rechazo de una tasa de envío no positiva.
+
+Ejecución:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Resultado de la validación: **46 pruebas exitosas** (`OK`), incluyendo las
+pruebas del CLI y del script del experimento.
+
+### 8.2 Evidencia del experimento
+
+La corrida guardada en `experiment/results/experiment_20261115T033152Z.json`
+y `.csv` ejecutó tres repeticiones con `--skip-docker`. En las tres se
+enviaron 2 mensajes, no hubo mensajes perdidos ni duplicados y la cola terminó
+vacía. Esta evidencia valida el flujo del script y la persistencia de
+resultados, pero **no representa una caída real de Docker**: `during_downtime`
+y `docker_down_seconds` son 0.0. La prueba de caída real debe ejecutarse en un
+equipo con Docker Compose disponible mediante:
+
+```bash
+docker compose --profile local --profile pair up --build -d
+python scripts/run_experiment.py \
+  --sender-url http://localhost:8002 \
+  --target-url http://localhost:8001 \
+  --service chat-g3 \
+  --rate 2 --duration 20 --down-at 5 --down-for 5 \
+  --repetitions 3
+docker compose down
+```
+
+### 8.3 Guion para el video de Mariana (6:00–8:00)
+
+> En esta parte mostramos la operación desde el usuario y la recuperación
+> completa del sistema. Primero levantamos los servicios con Docker Compose:
+> el central de prueba, `g3` y `g3b`. Los volúmenes conservan la base SQLite,
+> así que usuarios, historial, reloj y mensajes pendientes sobreviven a un
+> reinicio.
+>
+> Desde el CLI creamos el usuario `ana`, enviamos un mensaje y consultamos el
+> historial. El CLI siempre habla con el servidor local; la federación ocurre
+> en segundo plano entre el grupo y el central. En `status` comprobamos el
+> reloj de Lamport, el estado del central y cuántos mensajes quedan en la
+> cola.
+>
+> Ahora ejecutamos el experimento tres veces. El script envía mensajes a una
+> tasa fija, detiene `chat-g3` durante unos segundos y luego lo inicia de nuevo.
+> Mientras está caído, `g3b` continúa enviando. Al volver, `g3` sincroniza el
+> historial y entrega los mensajes pendientes usando los mismos UUID.
+>
+> La tabla resume las métricas: mensajes enviados, mensajes durante la caída,
+> mensajes perdidos, duplicados y tiempo de recuperación. El resultado
+> esperado es cero pérdidas y cero duplicados; esto confirma que la cola
+> persistente, el historial y la deduplicación hacen tolerante la caída
+> temporal del servidor.
+>
+> Como cierre, Docker hace reproducible el montaje, el CLI permite demostrarlo
+> sin depender de llamadas manuales y el experimento convierte la recuperación
+> en una medición verificable.
