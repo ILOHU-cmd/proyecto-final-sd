@@ -1,0 +1,81 @@
+{
+  "generated_at": "2026-11-16T16:51:13.679924+00:00",
+  "question": "¿Cuántos mensajes se pierden o se duplican cuando el servidor del grupo se cae durante unos segundos?",
+  "config": {
+    "sender_url": "http://localhost:8002",
+    "target_url": "http://localhost:8001",
+    "service": "chat-g3",
+    "user": "bot",
+    "rate": 2.0,
+    "duration": 20.0,
+    "down_at": 5.0,
+    "down_for": 5.0,
+    "restart_mode": false,
+    "repetitions": 3,
+    "skip_docker": false
+  },
+  "runs": [
+    {
+      "repetition": 1,
+      "run_id": "exp-r1-1794847753",
+      "sent": 40,
+      "send_errors": 0,
+      "during_downtime": 13,
+      "missing": 7,
+      "missing_ids": [
+        "103a2b7d-4296-46d3-8166-07b29b9b5db9",
+        "11e88555-7502-4e04-852b-5172536e14e8",
+        "209caf56-9fe2-44c8-90d8-986af20c9ace",
+        "38825ce8-c8ea-46b9-aedc-7b86b1b1977c",
+        "849928d4-e672-40d3-8997-838d174f8d43",
+        "e432c69f-dcd2-4f1a-b23f-96d75c9abd72",
+        "f47718af-20b3-4629-b742-6c38b27938ba"
+      ],
+      "duplicates": 0,
+      "recovery_seconds": 1.563,
+      "drained": true,
+      "drain_seconds": 0.016,
+      "recovered": false,
+      "docker_down_seconds": 6.547,
+      "errors": []
+    },
+    {
+      "repetition": 2,
+      "run_id": "exp-r2-1794847833",
+      "sent": 40,
+      "send_errors": 0,
+      "during_downtime": 14,
+      "missing": 0,
+      "missing_ids": [],
+      "duplicates": 0,
+      "recovery_seconds": 1.547,
+      "drained": true,
+      "drain_seconds": 0.0,
+      "recovered": true,
+      "docker_down_seconds": 6.578,
+      "errors": []
+    },
+    {
+      "repetition": 3,
+      "run_id": "exp-r3-1794847853",
+      "sent": 40,
+      "send_errors": 0,
+      "during_downtime": 13,
+      "missing": 0,
+      "missing_ids": [],
+      "duplicates": 0,
+      "recovery_seconds": 2.313,
+      "drained": true,
+      "drain_seconds": 0.015,
+      "recovered": true,
+      "docker_down_seconds": 6.547,
+      "errors": []
+    }
+  ],
+  "summary": {
+    "total_sent": 120,
+    "total_missing": 7,
+    "total_duplicates": 0,
+    "mean_recovery_seconds": 1.808
+  }
+}

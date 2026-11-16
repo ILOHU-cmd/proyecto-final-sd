@@ -1,0 +1,4 @@
+repetition,run_id,sent,during_downtime,missing,duplicates,recovery_seconds,docker_down_seconds,drained,recovered,send_errors
+1,exp-r1-1794713506,2,0,0,0,0.0,0.0,True,True,0
+2,exp-r2-1794713508,2,0,0,0,0.0,0.0,True,True,0
+3,exp-r3-1794713510,2,0,0,0,0.0,0.0,True,True,0
