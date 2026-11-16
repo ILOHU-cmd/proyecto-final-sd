@@ -56,12 +56,12 @@ from typing import Any
 
 import httpx
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "experiment" / "results"
+RAIZ_PROYECTO = Path(__file__).resolve().parent.parent
+DIRECTORIO_SALIDA_POR_DEFECTO = RAIZ_PROYECTO / "experiment" / "results"
 
 # La API local limita cada consulta a 5000 mensajes. Para el volumen de un
 # experimento de clase (decenas o cientos de mensajes) es más que suficiente.
-HISTORY_PAGE_SIZE = 5000
+TAMANO_PAGINA_HISTORIAL = 5000
 
 
 # ---------------------------------------------------------------------------
@@ -69,63 +69,76 @@ HISTORY_PAGE_SIZE = 5000
 # ---------------------------------------------------------------------------
 
 
-def get_json(
-    client: httpx.Client, path: str, params: dict[str, Any] | None = None
+def obtener_json(
+    cliente: httpx.Client,
+    ruta: str,
+    parametros: dict[str, Any] | None = None,
 ) -> Any:
-    response = client.get(path, params=params)
-    response.raise_for_status()
-    return response.json()
+    respuesta = cliente.get(ruta, params=parametros)
+    respuesta.raise_for_status()
+    return respuesta.json()
 
 
-def post_json(client: httpx.Client, path: str, payload: dict[str, Any]) -> Any:
-    response = client.post(path, json=payload)
-    response.raise_for_status()
-    return response.json()
+def enviar_json(
+    cliente: httpx.Client,
+    ruta: str,
+    cuerpo: dict[str, Any],
+) -> Any:
+    respuesta = cliente.post(ruta, json=cuerpo)
+    respuesta.raise_for_status()
+    return respuesta.json()
 
 
-def ensure_user(client: httpx.Client, username: str) -> None:
+def asegurar_usuario(cliente: httpx.Client, nombre_usuario: str) -> None:
     """Crea el usuario si no existe; un 409 significa que ya estaba."""
-    response = client.post("/users", json={"username": username})
-    if response.status_code in (201, 409):
+    respuesta = cliente.post("/users", json={"username": nombre_usuario})
+    if respuesta.status_code in (201, 409):
         return
-    response.raise_for_status()
+    respuesta.raise_for_status()
 
 
-def wait_until(
-    predicate: Callable[[], bool], timeout: float, interval: float = 0.5
+def esperar_hasta(
+    condicion: Callable[[], bool],
+    tiempo_maximo: float,
+    intervalo: float = 0.5,
 ) -> tuple[bool, float]:
-    """Espera a que ``predicate`` sea verdadero. Devuelve (ok, segundos)."""
-    started = time.monotonic()
-    while time.monotonic() - started < timeout:
+    """Espera a que ``condicion`` sea verdadera. Devuelve (ok, segundos)."""
+    inicio = time.monotonic()
+
+    while time.monotonic() - inicio < tiempo_maximo:
         try:
-            if predicate():
-                return True, time.monotonic() - started
+            if condicion():
+                return True, time.monotonic() - inicio
         except (httpx.HTTPError, ValueError):
             pass
-        time.sleep(interval)
-    return False, time.monotonic() - started
+
+        time.sleep(intervalo)
+
+    return False, time.monotonic() - inicio
 
 
-def docker_compose(compose_dir: Path, *args: str) -> None:
+def ejecutar_docker_compose(directorio_compose: Path, *argumentos: str) -> None:
     """Ejecuta ``docker compose ...`` mostrando el comando exacto."""
-    compose_file = compose_dir / "docker-compose.yml"
-    command = ["docker", "compose"]
-    if compose_file.exists():
-        command += ["-f", str(compose_file)]
-    command += list(args)
+    archivo_compose = directorio_compose / "docker-compose.yml"
 
-    print("    $ " + " ".join(command))
+    comando = ["docker", "compose"]
+    if archivo_compose.exists():
+        comando += ["-f", str(archivo_compose)]
+    comando += list(argumentos)
+
+    print("    $ " + " ".join(comando))
+
     try:
-        subprocess.run(command, cwd=compose_dir, check=True)
-    except FileNotFoundError as exc:
+        subprocess.run(comando, cwd=directorio_compose, check=True)
+    except FileNotFoundError as error:
         raise RuntimeError(
             "No se encontró el comando 'docker'. El experimento debe correr "
             "en el anfitrión, no dentro de un contenedor."
-        ) from exc
-    except subprocess.CalledProcessError as exc:
+        ) from error
+    except subprocess.CalledProcessError as error:
         raise RuntimeError(
-            f"Falló el comando de Docker (código {exc.returncode})."
-        ) from exc
+            f"Falló el comando de Docker (código {error.returncode})."
+        ) from error
 
 
 # ---------------------------------------------------------------------------
@@ -133,51 +146,58 @@ def docker_compose(compose_dir: Path, *args: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def sender_loop(
-    client: httpx.Client,
-    user: str,
-    rate: float,
-    duration: float,
-    run_id: str,
-    sent: list[dict[str, Any]],
-    errors: list[dict[str, Any]],
-    stop_event: threading.Event,
+def bucle_emisor(
+    cliente: httpx.Client,
+    nombre_usuario: str,
+    tasa: float,
+    duracion: float,
+    id_ejecucion: str,
+    enviados: list[dict[str, Any]],
+    errores: list[dict[str, Any]],
+    evento_detener: threading.Event,
 ) -> None:
-    """Envía a tasa fija durante ``duration`` segundos.
+    """Envía a tasa fija durante ``duracion`` segundos.
 
     Cada mensaje tiene un cuerpo único para poder identificarlo al final. El
     id que devuelve el servidor es el UUID del protocolo: ese es el dato que
     se compara, no el texto.
     """
-    interval = 1.0 / rate
-    started = time.monotonic()
-    index = 0
-    next_at = started
+    intervalo = 1.0 / tasa
+    inicio = time.monotonic()
+    indice = 0
+    proximo_envio = inicio
 
-    while not stop_event.is_set():
-        now = time.monotonic()
-        if now - started >= duration:
+    while not evento_detener.is_set():
+        ahora = time.monotonic()
+
+        if ahora - inicio >= duracion:
             break
-        if now < next_at:
-            stop_event.wait(min(next_at - now, 0.05))
+
+        if ahora < proximo_envio:
+            evento_detener.wait(min(proximo_envio - ahora, 0.05))
             continue
 
-        body = f"{run_id}-{index:04d}"
+        cuerpo = f"{id_ejecucion}-{indice:04d}"
+
         try:
-            data = post_json(client, "/messages", {"user": user, "body": body})
-            sent.append(
+            datos = enviar_json(
+                cliente,
+                "/messages",
+                {"user": nombre_usuario, "body": cuerpo},
+            )
+            enviados.append(
                 {
-                    "index": index,
-                    "id": data["id"],
-                    "body": body,
+                    "index": indice,
+                    "id": datos["id"],
+                    "body": cuerpo,
                     "sent_epoch": time.time(),
                 }
             )
-        except (httpx.HTTPError, ValueError) as exc:
-            errors.append({"index": index, "error": repr(exc)})
+        except (httpx.HTTPError, ValueError) as error:
+            errores.append({"index": indice, "error": repr(error)})
 
-        index += 1
-        next_at = started + index * interval
+        indice += 1
+        proximo_envio = inicio + indice * intervalo
 
 
 # ---------------------------------------------------------------------------
@@ -185,180 +205,199 @@ def sender_loop(
 # ---------------------------------------------------------------------------
 
 
-def run_repetition(
-    number: int,
-    args: argparse.Namespace,
-    sender: httpx.Client,
-    target: httpx.Client,
+def ejecutar_repeticion(
+    numero: int,
+    argumentos: argparse.Namespace,
+    emisor: httpx.Client,
+    objetivo: httpx.Client,
 ) -> dict[str, Any]:
-    run_id = f"exp-r{number}-{int(time.time())}"
-    ensure_user(sender, args.user)
+    id_ejecucion = f"exp-r{numero}-{int(time.time())}"
+    asegurar_usuario(emisor, argumentos.user)
 
-    sent: list[dict[str, Any]] = []
-    errors: list[dict[str, Any]] = []
-    stop_event = threading.Event()
+    enviados: list[dict[str, Any]] = []
+    errores: list[dict[str, Any]] = []
+    evento_detener = threading.Event()
 
-    thread = threading.Thread(
-        target=sender_loop,
+    hilo = threading.Thread(
+        target=bucle_emisor,
         args=(
-            sender,
-            args.user,
-            args.rate,
-            args.duration,
-            run_id,
-            sent,
-            errors,
-            stop_event,
+            emisor,
+            argumentos.user,
+            argumentos.rate,
+            argumentos.duration,
+            id_ejecucion,
+            enviados,
+            errores,
+            evento_detener,
         ),
-        name="experiment-sender",
+        name="hilo-emisor",
         daemon=True,
     )
-    thread.start()
+    hilo.start()
 
     # ``time.monotonic`` sirve para medir duraciones; ``time.time`` se usa
     # para comparar con el ``sent_epoch`` que guarda el hilo emisor. No se
     # mezclan: son escalas distintas.
-    down_started = 0.0
-    down_started_wall = 0.0
-    up_command_at = 0.0
-    service_started_at = 0.0
-    service_started_wall = 0.0
-    recovery_seconds = 0.0
-    recovered_backlog = True
-    backlog_ids: set[str] = set()
+    caida_inicio = 0.0
+    caida_inicio_reloj = 0.0
+    comando_levantar_en = 0.0
+    servicio_inicio = 0.0
+    servicio_inicio_reloj = 0.0
+    segundos_recuperacion = 0.0
+    recupero_rezago = True
+    ids_rezago: set[str] = set()
 
-    def target_has(ids: set[str]) -> bool:
+    def objetivo_tiene(ids: set[str]) -> bool:
         """True si el objetivo ya tiene todos los ids indicados."""
         if not ids:
             return True
-        data = get_json(
-            target,
-            "/messages",
-            params={"since": 0, "limit": HISTORY_PAGE_SIZE},
-        )
-        current_ids = {message["id"] for message in data["messages"]}
-        return ids.issubset(current_ids)
 
-    if args.skip_docker:
+        datos = obtener_json(
+            objetivo,
+            "/messages",
+            parametros={"since": 0, "limit": TAMANO_PAGINA_HISTORIAL},
+        )
+        ids_actuales = {mensaje["id"] for mensaje in datos["messages"]}
+        return ids.issubset(ids_actuales)
+
+    if argumentos.skip_docker:
         print("  [sin caída] --skip-docker activo; no se detiene el objetivo")
     else:
-        print(f"  esperando {args.down_at:.1f}s para provocar la caída...")
-        time.sleep(args.down_at)
+        print(f"  esperando {argumentos.down_at:.1f}s para provocar la caída...")
+        time.sleep(argumentos.down_at)
 
-        if args.restart:
+        if argumentos.restart:
             # Modo restart: la duración de la caída la decide Docker, no
             # nosotros. Sirve para cumplir el escenario del enunciado, aunque
             # para medir es más preciso stop/start (modo por defecto).
-            print(f"  reiniciando '{args.service}' con docker compose restart")
-            down_started = time.monotonic()
-            down_started_wall = time.time()
-            up_command_at = time.monotonic()
-            docker_compose(args.compose_dir, "restart", args.service)
+            print(f"  reiniciando '{argumentos.service}' con docker compose restart")
+            caida_inicio = time.monotonic()
+            caida_inicio_reloj = time.time()
+            comando_levantar_en = time.monotonic()
+            ejecutar_docker_compose(
+                argumentos.compose_dir,
+                "restart",
+                argumentos.service,
+            )
         else:
-            print(f"  deteniendo '{args.service}' durante {args.down_for:.1f}s")
-            down_started = time.monotonic()
-            down_started_wall = time.time()
-            docker_compose(args.compose_dir, "stop", args.service)
-            time.sleep(args.down_for)
+            print(
+                f"  deteniendo '{argumentos.service}' durante "
+                f"{argumentos.down_for:.1f}s"
+            )
+            caida_inicio = time.monotonic()
+            caida_inicio_reloj = time.time()
+            ejecutar_docker_compose(
+                argumentos.compose_dir,
+                "stop",
+                argumentos.service,
+            )
+            time.sleep(argumentos.down_for)
 
-            print(f"  levantando '{args.service}'")
-            up_command_at = time.monotonic()
-            docker_compose(args.compose_dir, "start", args.service)
+            print(f"  levantando '{argumentos.service}'")
+            comando_levantar_en = time.monotonic()
+            ejecutar_docker_compose(
+                argumentos.compose_dir,
+                "start",
+                argumentos.service,
+            )
 
         # Todo lo enviado hasta este instante es el "rezago" que el objetivo
         # debe recuperar. Se congela la lista: los mensajes posteriores
         # llegarán por reenvío normal del central.
-        service_started_at = time.monotonic()
-        service_started_wall = time.time()
-        backlog_ids = {
-            item["id"]
-            for item in list(sent)
-            if item["sent_epoch"] <= service_started_wall
+        servicio_inicio = time.monotonic()
+        servicio_inicio_reloj = time.time()
+        ids_rezago = {
+            elemento["id"]
+            for elemento in list(enviados)
+            if elemento["sent_epoch"] <= servicio_inicio_reloj
         }
 
-        print(f"  esperando recuperación del rezago ({len(backlog_ids)} mensajes)...")
-        recovered_backlog, _ = wait_until(
-            lambda: target_has(backlog_ids),
-            timeout=args.recovery_timeout,
+        print(f"  esperando recuperación del rezago ({len(ids_rezago)} mensajes)...")
+        recupero_rezago, _ = esperar_hasta(
+            lambda: objetivo_tiene(ids_rezago),
+            tiempo_maximo=argumentos.recovery_timeout,
         )
-        recovery_seconds = time.monotonic() - up_command_at
-        if not recovered_backlog:
+        segundos_recuperacion = time.monotonic() - comando_levantar_en
+
+        if not recupero_rezago:
             print(
                 "  ADVERTENCIA: el objetivo no recuperó todo el rezago "
                 "dentro del tiempo límite."
             )
 
-    thread.join()
+    hilo.join()
 
     # Esperar a que el emisor vacíe su cola: si no, los mensajes ni siquiera
     # llegaron al central y el experimento mediría otra cosa.
     print("  esperando a que el emisor entregue todo al central...")
-    drain_started = time.monotonic()
-    drained, _ = wait_until(
-        lambda: get_json(sender, "/status")["pending_messages"] == 0,
-        timeout=args.drain_timeout,
+    drenaje_inicio = time.monotonic()
+    drenado, _ = esperar_hasta(
+        lambda: obtener_json(emisor, "/status")["pending_messages"] == 0,
+        tiempo_maximo=argumentos.drain_timeout,
     )
-    drain_seconds = time.monotonic() - drain_started
-    if not drained:
+    segundos_drenaje = time.monotonic() - drenaje_inicio
+
+    if not drenado:
         print(
             "  ADVERTENCIA: el emisor aún tiene mensajes pendientes; "
             "los resultados pueden estar incompletos."
         )
 
-    sent_ids = {item["id"] for item in sent}
+    ids_enviados = {elemento["id"] for elemento in enviados}
 
     print("  verificando que el objetivo tenga todos los mensajes...")
-    recovered_all, _ = wait_until(
-        lambda: target_has(sent_ids),
-        timeout=args.recovery_timeout,
+    recupero_todo, _ = esperar_hasta(
+        lambda: objetivo_tiene(ids_enviados),
+        tiempo_maximo=argumentos.recovery_timeout,
     )
-    recovered = recovered_all and recovered_backlog
+    recuperado = recupero_todo and recupero_rezago
 
-    final = get_json(
-        target, "/messages", params={"since": 0, "limit": HISTORY_PAGE_SIZE}
+    final = obtener_json(
+        objetivo,
+        "/messages",
+        parametros={"since": 0, "limit": TAMANO_PAGINA_HISTORIAL},
     )
-    ids = [message["id"] for message in final["messages"]]
-    counts = Counter(ids)
+    ids = [mensaje["id"] for mensaje in final["messages"]]
+    conteos = Counter(ids)
 
-    missing_ids = sorted(sent_ids - set(ids))
-    duplicate_count = sum(count - 1 for count in counts.values() if count > 1)
+    ids_faltantes = sorted(ids_enviados - set(ids))
+    cantidad_duplicados = sum(conteo - 1 for conteo in conteos.values() if conteo > 1)
 
-    during_downtime = 0
-    if down_started_wall and service_started_wall:
-        during_downtime = sum(
+    durante_caida = 0
+    if caida_inicio_reloj and servicio_inicio_reloj:
+        durante_caida = sum(
             1
-            for item in sent
-            if down_started_wall <= item["sent_epoch"] <= service_started_wall
+            for elemento in enviados
+            if caida_inicio_reloj <= elemento["sent_epoch"] <= servicio_inicio_reloj
         )
 
-    result = {
-        "repetition": number,
-        "run_id": run_id,
-        "sent": len(sent),
-        "send_errors": len(errors),
-        "during_downtime": during_downtime,
-        "missing": len(missing_ids),
-        "missing_ids": missing_ids[:20],
-        "duplicates": duplicate_count,
-        "recovery_seconds": round(recovery_seconds, 3),
-        "drained": drained,
-        "drain_seconds": round(drain_seconds, 3),
-        "recovered": recovered,
+    resultado = {
+        "repetition": numero,
+        "run_id": id_ejecucion,
+        "sent": len(enviados),
+        "send_errors": len(errores),
+        "during_downtime": durante_caida,
+        "missing": len(ids_faltantes),
+        "missing_ids": ids_faltantes[:20],
+        "duplicates": cantidad_duplicados,
+        "recovery_seconds": round(segundos_recuperacion, 3),
+        "drained": drenado,
+        "drain_seconds": round(segundos_drenaje, 3),
+        "recovered": recuperado,
         "docker_down_seconds": (
-            round(service_started_at - down_started, 3)
-            if down_started and service_started_at
+            round(servicio_inicio - caida_inicio, 3)
+            if caida_inicio and servicio_inicio
             else 0.0
         ),
-        "errors": errors[:20],
+        "errors": errores[:20],
     }
 
     print(
         "  resultado: enviados={sent} durante_caida={during_downtime} "
-        "perdidos={missing} duplicados={duplicates} recuperacion={recovery_seconds}s".format(
-            **result
-        )
+        "perdidos={missing} duplicados={duplicates} "
+        "recuperacion={recovery_seconds}s".format(**resultado)
     )
-    return result
+    return resultado
 
 
 # ---------------------------------------------------------------------------
@@ -366,59 +405,82 @@ def run_repetition(
 # ---------------------------------------------------------------------------
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+def leer_argumentos(argv: list[str] | None = None) -> argparse.Namespace:
+    analizador = argparse.ArgumentParser(
         description="Mide pérdidas, duplicados y tiempo de recuperación.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument(
-        "--sender-url", default="http://localhost:8002", help="Servidor emisor"
+    analizador.add_argument(
+        "--sender-url",
+        default="http://localhost:8002",
+        help="Servidor emisor",
     )
-    parser.add_argument(
-        "--target-url", default="http://localhost:8001", help="Servidor que se cae"
+    analizador.add_argument(
+        "--target-url",
+        default="http://localhost:8001",
+        help="Servidor que se cae",
     )
-    parser.add_argument(
+    analizador.add_argument(
         "--service",
         default="chat-g3",
         help="Nombre del servicio del objetivo en docker-compose.yml",
     )
-    parser.add_argument("--user", default="bot", help="Usuario emisor")
-    parser.add_argument("--rate", type=float, default=2.0, help="Mensajes/segundo")
-    parser.add_argument("--duration", type=float, default=20.0, help="Segundos")
-    parser.add_argument(
-        "--down-at", type=float, default=5.0, help="Cuándo provocar la caída"
+    analizador.add_argument("--user", default="bot", help="Usuario emisor")
+    analizador.add_argument(
+        "--rate",
+        type=float,
+        default=2.0,
+        help="Mensajes/segundo",
     )
-    parser.add_argument(
-        "--down-for", type=float, default=5.0, help="Duración de la caída"
+    analizador.add_argument(
+        "--duration",
+        type=float,
+        default=20.0,
+        help="Segundos",
     )
-    parser.add_argument(
-        "--repetitions", type=int, default=3, help="Repeticiones de la medición"
+    analizador.add_argument(
+        "--down-at",
+        type=float,
+        default=5.0,
+        help="Cuándo provocar la caída",
     )
-    parser.add_argument(
+    analizador.add_argument(
+        "--down-for",
+        type=float,
+        default=5.0,
+        help="Duración de la caída",
+    )
+    analizador.add_argument(
+        "--repetitions",
+        type=int,
+        default=3,
+        help="Repeticiones de la medición",
+    )
+    analizador.add_argument(
         "--recovery-timeout",
         type=float,
         default=60.0,
         help="Máximo a esperar por la recuperación",
     )
-    parser.add_argument(
+    analizador.add_argument(
         "--drain-timeout",
         type=float,
         default=60.0,
         help="Máximo a esperar a que el emisor vacíe su cola",
     )
-    parser.add_argument(
+    analizador.add_argument(
         "--compose-dir",
         type=Path,
-        default=PROJECT_ROOT,
+        default=RAIZ_PROYECTO,
         help="Directorio donde está docker-compose.yml",
     )
-    parser.add_argument(
+    analizador.add_argument(
         "--output-dir",
         type=Path,
-        default=DEFAULT_OUTPUT_DIR,
+        default=DIRECTORIO_SALIDA_POR_DEFECTO,
         help="Directorio donde se guardan JSON y CSV",
     )
-    parser.add_argument(
+    analizador.add_argument(
         "--restart",
         action="store_true",
         help=(
@@ -426,50 +488,55 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "stop/start. La duración la decide Docker."
         ),
     )
-    parser.add_argument(
+    analizador.add_argument(
         "--skip-docker",
         action="store_true",
         help="No detiene el objetivo (útil para probar el script sin Docker)",
     )
-    return parser.parse_args(argv)
+    return analizador.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
+def principal(argv: list[str] | None = None) -> int:
     # Los mensajes de progreso deben verse aunque la salida se redirija a un
     # archivo o a una tubería.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(line_buffering=True)
 
-    args = parse_args(argv)
+    argumentos = leer_argumentos(argv)
 
-    if args.sender_url.rstrip("/") == args.target_url.rstrip("/"):
+    if argumentos.sender_url.rstrip("/") == argumentos.target_url.rstrip("/"):
         print(
             "Error: --sender-url y --target-url deben ser servidores distintos.",
             file=sys.stderr,
         )
         return 2
-    if args.rate <= 0 or args.duration <= 0 or args.repetitions <= 0:
+
+    if argumentos.rate <= 0 or argumentos.duration <= 0 or argumentos.repetitions <= 0:
         print(
-            "Error: rate, duration y repetitions deben ser positivos.", file=sys.stderr
-        )
-        return 2
-    if args.rate * args.duration > HISTORY_PAGE_SIZE:
-        print(
-            "Error: rate * duration supera el límite de "
-            f"{HISTORY_PAGE_SIZE} mensajes por consulta.",
+            "Error: rate, duration y repetitions deben ser positivos.",
             file=sys.stderr,
         )
         return 2
-    if not args.skip_docker and args.down_at >= args.duration:
+
+    if argumentos.rate * argumentos.duration > TAMANO_PAGINA_HISTORIAL:
+        print(
+            "Error: rate * duration supera el límite de "
+            f"{TAMANO_PAGINA_HISTORIAL} mensajes por consulta.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if not argumentos.skip_docker and argumentos.down_at >= argumentos.duration:
         print(
             "Error: --down-at debe ser menor que --duration.",
             file=sys.stderr,
         )
         return 2
+
     if (
-        not args.skip_docker
-        and not args.restart
-        and args.down_at + args.down_for >= args.duration
+        not argumentos.skip_docker
+        and not argumentos.restart
+        and argumentos.down_at + argumentos.down_for >= argumentos.duration
     ):
         print(
             "Error: la caída debe terminar antes de --duration "
@@ -478,108 +545,133 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    sender = httpx.Client(base_url=args.sender_url.rstrip("/"), timeout=15.0)
-    target = httpx.Client(base_url=args.target_url.rstrip("/"), timeout=15.0)
+    emisor = httpx.Client(
+        base_url=argumentos.sender_url.rstrip("/"),
+        timeout=15.0,
+    )
+    objetivo = httpx.Client(
+        base_url=argumentos.target_url.rstrip("/"),
+        timeout=15.0,
+    )
 
-    results: list[dict[str, Any]] = []
+    resultados: list[dict[str, Any]] = []
+
     try:
         # Comprobación previa: ambos servidores deben estar arriba.
-        for name, client in (("emisor", sender), ("objetivo", target)):
+        for nombre, cliente in (("emisor", emisor), ("objetivo", objetivo)):
             try:
-                status = get_json(client, "/status")
-            except (httpx.HTTPError, ValueError) as exc:
+                estado = obtener_json(cliente, "/status")
+            except (httpx.HTTPError, ValueError) as error:
                 print(
-                    f"Error: el servidor {name} ({client.base_url}) no responde: {exc}",
+                    f"Error: el servidor {nombre} ({cliente.base_url}) "
+                    f"no responde: {error}",
                     file=sys.stderr,
                 )
                 return 1
+
             print(
-                f"Servidor {name}: {status['server']} "
-                f"(central_online={status['central_online']})"
+                f"Servidor {nombre}: {estado['server']} "
+                f"(central_online={estado['central_online']})"
             )
 
-        for repetition in range(1, args.repetitions + 1):
-            print(f"\nRepetición {repetition}/{args.repetitions}")
-            result = run_repetition(repetition, args, sender, target)
-            results.append(result)
-    except RuntimeError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        for repeticion in range(1, argumentos.repetitions + 1):
+            print(f"\nRepetición {repeticion}/{argumentos.repetitions}")
+            resultado = ejecutar_repeticion(
+                repeticion,
+                argumentos,
+                emisor,
+                objetivo,
+            )
+            resultados.append(resultado)
+
+    except RuntimeError as error:
+        print(f"Error: {error}", file=sys.stderr)
         return 1
     finally:
-        sender.close()
-        target.close()
+        emisor.close()
+        objetivo.close()
 
     # ------------------------------------------------------------------
     # Resumen
     # ------------------------------------------------------------------
-    total_missing = sum(r["missing"] for r in results)
-    total_duplicates = sum(r["duplicates"] for r in results)
-    recoveries = [r["recovery_seconds"] for r in results]
-    mean_recovery = sum(recoveries) / len(recoveries) if recoveries else 0.0
+    total_faltantes = sum(resultado["missing"] for resultado in resultados)
+    total_duplicados = sum(resultado["duplicates"] for resultado in resultados)
+    recuperaciones = [resultado["recovery_seconds"] for resultado in resultados]
+    recuperacion_media = (
+        sum(recuperaciones) / len(recuperaciones) if recuperaciones else 0.0
+    )
 
     print("\n" + "=" * 78)
     print("RESULTADOS")
     print("=" * 78)
-    header = (
+
+    encabezado = (
         f"{'Rep':>4} {'Enviados':>9} {'En caída':>9} {'Perdidos':>9} "
         f"{'Duplic.':>8} {'Recup.(s)':>10} {'Estado':>10}"
     )
-    print(header)
-    print("-" * len(header))
-    for result in results:
-        state = "OK" if result["recovered"] and result["drained"] else "REVISAR"
+    print(encabezado)
+    print("-" * len(encabezado))
+
+    for resultado in resultados:
+        estado = "OK" if resultado["recovered"] and resultado["drained"] else "REVISAR"
         print(
-            f"{result['repetition']:>4} {result['sent']:>9} "
-            f"{result['during_downtime']:>9} {result['missing']:>9} "
-            f"{result['duplicates']:>8} {result['recovery_seconds']:>10.2f} "
-            f"{state:>10}"
+            f"{resultado['repetition']:>4} {resultado['sent']:>9} "
+            f"{resultado['during_downtime']:>9} "
+            f"{resultado['missing']:>9} "
+            f"{resultado['duplicates']:>8} "
+            f"{resultado['recovery_seconds']:>10.2f} "
+            f"{estado:>10}"
         )
-    print("-" * len(header))
-    print(f"Total perdidos: {total_missing}   Total duplicados: {total_duplicates}")
-    print(f"Tiempo medio de recuperación: {mean_recovery:.2f} s")
+
+    print("-" * len(encabezado))
+    print(f"Total perdidos: {total_faltantes}   Total duplicados: {total_duplicados}")
+    print(f"Tiempo medio de recuperación: {recuperacion_media:.2f} s")
 
     # ------------------------------------------------------------------
     # Persistencia de los datos
     # ------------------------------------------------------------------
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    json_path = args.output_dir / f"experiment_{stamp}.json"
-    csv_path = args.output_dir / f"experiment_{stamp}.csv"
+    argumentos.output_dir.mkdir(parents=True, exist_ok=True)
 
-    payload = {
+    sello = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ruta_json = argumentos.output_dir / f"experiment_{sello}.json"
+    ruta_csv = argumentos.output_dir / f"experiment_{sello}.csv"
+
+    contenido = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "question": (
             "¿Cuántos mensajes se pierden o se duplican cuando el servidor del "
             "grupo se cae durante unos segundos?"
         ),
         "config": {
-            "sender_url": args.sender_url,
-            "target_url": args.target_url,
-            "service": args.service,
-            "user": args.user,
-            "rate": args.rate,
-            "duration": args.duration,
-            "down_at": args.down_at,
-            "down_for": args.down_for,
-            "restart_mode": args.restart,
-            "repetitions": args.repetitions,
-            "skip_docker": args.skip_docker,
+            "sender_url": argumentos.sender_url,
+            "target_url": argumentos.target_url,
+            "service": argumentos.service,
+            "user": argumentos.user,
+            "rate": argumentos.rate,
+            "duration": argumentos.duration,
+            "down_at": argumentos.down_at,
+            "down_for": argumentos.down_for,
+            "restart_mode": argumentos.restart,
+            "repetitions": argumentos.repetitions,
+            "skip_docker": argumentos.skip_docker,
         },
-        "runs": results,
+        "runs": resultados,
         "summary": {
-            "total_sent": sum(r["sent"] for r in results),
-            "total_missing": total_missing,
-            "total_duplicates": total_duplicates,
-            "mean_recovery_seconds": round(mean_recovery, 3),
+            "total_sent": sum(resultado["sent"] for resultado in resultados),
+            "total_missing": total_faltantes,
+            "total_duplicates": total_duplicados,
+            "mean_recovery_seconds": round(recuperacion_media, 3),
         },
     }
-    json_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+
+    ruta_json.write_text(
+        json.dumps(contenido, ensure_ascii=False, indent=2),
+        encoding="utf-8",
     )
 
-    with csv_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(
-            handle,
+    with ruta_csv.open("w", newline="", encoding="utf-8") as archivo:
+        escritor = csv.DictWriter(
+            archivo,
             fieldnames=[
                 "repetition",
                 "run_id",
@@ -594,13 +686,16 @@ def main(argv: list[str] | None = None) -> int:
                 "send_errors",
             ],
         )
-        writer.writeheader()
-        for result in results:
-            writer.writerow({key: result[key] for key in writer.fieldnames})
+        escritor.writeheader()
 
-    print(f"\nDatos guardados en:\n  {json_path}\n  {csv_path}")
+        for resultado in resultados:
+            escritor.writerow(
+                {clave: resultado[clave] for clave in escritor.fieldnames}
+            )
+
+    print(f"\nDatos guardados en:\n  {ruta_json}\n  {ruta_csv}")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(principal())
