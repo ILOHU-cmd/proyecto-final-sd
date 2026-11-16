@@ -777,6 +777,24 @@ Tiempo medio de recuperación: 4.32 s
 ```
 
 Los datos quedan en `experiment/results/experiment_<fecha>.json` y `.csv`.
+
+### Evidencia disponible
+
+Se ejecutaron 3 repeticiones locales del script con dos servidores y el
+central de prueba. En esta validacion se uso `--skip-docker`, por lo que no se
+provoco una caida real; sirve para comprobar el envio, el drenaje de la cola,
+la comparacion de historiales y la persistencia de resultados:
+
+| Repeticion | Enviados | Perdidos | Duplicados | Recuperacion (s) | Estado |
+|---:|---:|---:|---:|---:|:---:|
+| 1 | 2 | 0 | 0 | 0.00 | OK |
+| 2 | 2 | 0 | 0 | 0.00 | OK |
+| 3 | 2 | 0 | 0 | 0.00 | OK |
+
+Los archivos de evidencia son el JSON y CSV con prefijo
+`experiment_20261115T033152Z` dentro de `experiment/results/`. La prueba con
+caida real queda pendiente de ejecutar cuando el daemon de Docker este
+disponible.
 Esos archivos son los que se usan para la tabla o gráfica del póster.
 
 **Para el póster:** grafica la recuperación (s) por repetición, o el número
@@ -1109,9 +1127,10 @@ recordar un canal. El grupo detecta la caída por sí mismo y reintenta.
    historial completo.
 6. **El central de prueba es en memoria.** No sirve para la sesión de
    interoperabilidad oficial; solo para desarrollo.
-7. **Sin tests automatizados.** Se probó manualmente y con el script del
-   experimento. Una mejora clara es añadir `pytest` + `httpx` para los
-   endpoints y la deduplicación.
+7. **Cobertura de pruebas en crecimiento.** El CLI ya tiene pruebas
+   automatizadas para el formato de mensajes propios y remotos en
+   `tests/test_cli.py`; la cobertura de API, almacenamiento y sincronizacion
+   se completa en las ramas de sus respectivos duenos.
 8. **Sin salas ni mensajes directos.** El enunciado pide una sola sala,
    `#general`; se mantuvo así a propósito.
 
