@@ -1038,6 +1038,8 @@ chat-distribuido-g3/
 │   ├── test_config.py
 │   └── test_storage.py
 ├── docs/
+│   ├── INFORME_FINAL.html           # Fuente del informe final
+│   ├── INFORME_FINAL.pdf            # Informe final del proyecto (A4)
 │   ├── POSTER.md                    # Texto fuente del póster
 │   ├── poster_final.html            # Diseño A1
 │   ├── poster_final.pdf             # PDF A1 para entrega
@@ -1052,6 +1054,10 @@ chat-distribuido-g3/
 ├── PLAN_EQUIPO.md          # Reparto de trabajo y plan de 7 días
 └── README.md
 ```
+
+El informe final completo está en
+[`docs/INFORME_FINAL.pdf`](docs/INFORME_FINAL.pdf); su fuente HTML es
+[`docs/INFORME_FINAL.html`](docs/INFORME_FINAL.html).
 
 ---
 
