@@ -39,9 +39,11 @@ cae durante unos segundos mientras otro grupo sigue enviando?
 - Porcentaje de pérdida: **5.8 %** (7/120).
 - Tiempo medio de recuperación reportado: **1.808 s**.
 
-Los valores de recuperación son los que reporta `run_experiment.py` al medir
-la recuperación del rezago. La columna `Recuperado` es la verificación final
-del script sobre todos los UUID enviados.
+`recovery_seconds` mide el tiempo desde antes de `docker compose start` hasta
+que concluye la comprobación inicial del rezago. `recovered` solo es verdadero
+si esa comprobación y la verificación final de todos los UUID enviados tienen
+éxito. `drained` es una medida distinta: indica que la cola de salida del
+emisor quedó vacía, no que el receptor haya guardado todos los mensajes.
 
 ## 4. Lectura por repetición
 
@@ -74,7 +76,7 @@ quedó drenada y `recovered: true`.
 
 ## 5. Pruebas automatizadas
 
-La suite actual tiene **53 pruebas aprobadas** con
+La suite actual tiene **54 pruebas aprobadas** con
 `python -m unittest discover -s tests -v`:
 
 | Bloque | Archivo | Pruebas |
@@ -84,8 +86,8 @@ La suite actual tiene **53 pruebas aprobadas** con
 | Cliente central | `tests/test_central_client.py` | 19 |
 | CLI y experimento | `tests/test_cli.py` | 5 |
 | Configuración | `tests/test_config.py` | 9 |
-| Almacenamiento y Lamport | `tests/test_storage.py` | 7 |
-| **Total** |  | **53** |
+| Almacenamiento y Lamport | `tests/test_storage.py` | 8 |
+| **Total** |  | **54** |
 
 También se verificó:
 
