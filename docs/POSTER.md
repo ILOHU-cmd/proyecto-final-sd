@@ -108,7 +108,7 @@ Los servidores de grupo **no se hablan directamente**. Todo mensaje pasa por el 
 
 **Qué funcionó:** registro y renovación, reenvío por el central, `outbox`, recuperación por historial, deduplicación por UUID, orden `(lamport, origin, id)` y detección por heartbeat.
 
-**Alcance:** el ensayo es local, con el central de prueba. El profesor indicó que lo que debía entregar el script de conformidad se omite; por eso no se anexa una salida oficial ni se presenta una sesión oficial como realizada. La bitácora del ensayo está en `docs/BITACORA_INTEROPERABILIDAD.md`.
+**Alcance:** el ensayo es local, con el central de prueba. El profesor indicó que lo que debía entregar el script de conformidad se omite; por eso no se anexa una salida oficial ni se presenta una sesión oficial como realizada. La bitácora de interoperabilidad la lleva Daniela en la rama `feature/core-api-models`.
 
 ---
 

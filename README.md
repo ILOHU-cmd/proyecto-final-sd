@@ -1041,7 +1041,6 @@ chat-distribuido-g3/
 │   ├── POSTER.md                    # Texto fuente del póster
 │   ├── poster_final.html            # Diseño A1
 │   ├── poster_final.pdf             # PDF A1 para entrega
-│   ├── BITACORA_INTEROPERABILIDAD.md
 │   ├── PRUEBA_REINTENTOS.md
 │   └── evidencia/                   # Evidencia local de interop
 ├── Dockerfile
