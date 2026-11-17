@@ -167,18 +167,34 @@ Ejecución:
 python -m unittest discover -s tests -v
 ```
 
-Resultado de la validación: **46 pruebas exitosas** (`OK`), incluyendo las
-pruebas del CLI y del script del experimento.
+Resultado de la validación: **53 pruebas exitosas** (`OK`), incluyendo las
+pruebas de API, CLI, configuración, almacenamiento, backoff y cliente central.
 
 ### 8.2 Evidencia del experimento
 
-La corrida guardada en `experiment/results/experiment_20261115T033152Z.json`
-y `.csv` ejecutó tres repeticiones con `--skip-docker`. En las tres se
-enviaron 2 mensajes, no hubo mensajes perdidos ni duplicados y la cola terminó
-vacía. Esta evidencia valida el flujo del script y la persistencia de
-resultados, pero **no representa una caída real de Docker**: `during_downtime`
-y `docker_down_seconds` son 0.0. La prueba de caída real debe ejecutarse en un
-equipo con Docker Compose disponible mediante:
+La corrida de referencia es
+`experiment/results/experiment_20261116T165113Z.json` y `.csv`
+(`skip_docker: false`):
+
+| Repetición | Enviados | En caída | Perdidos | Duplicados | Recuperación (s) | Estado |
+|---|---:|---:|---:|---:|---:|---|
+| 1 | 40 | 13 | 7 | 0 | 1.563 | Parcial |
+| 2 | 40 | 14 | 0 | 0 | 1.547 | OK |
+| 3 | 40 | 13 | 0 | 0 | 2.313 | OK |
+| **Total** | **120** | **40** | **7** | **0** | **1.808** | **2/3 OK** |
+
+La corrida `experiment_20261115T033152Z` se ejecutó con `--skip-docker`, envió
+solo 2 mensajes por repetición y no provocó caída (`docker_down_seconds: 0.0`).
+Sirve para validar el flujo del script, pero **no es evidencia de resiliencia**
+y no debe usarse en el póster como si fuera una caída real.
+
+La primera repetición real perdió 7 mensajes y terminó con `recovered=false`.
+El análisis completo está en `experiment/ANALISIS.md`. La explicación no debe
+inventar una causa única: el JSON no conserva la marca `last_history_lamport`
+ni las trazas de `/history`; el patrón es compatible con una recuperación
+incompleta de la ventana de caída, no con un fallo de idempotencia.
+
+Para reproducir la corrida real en un equipo con Docker Compose:
 
 ```bash
 docker compose --profile local --profile pair up --build -d
@@ -211,10 +227,11 @@ docker compose down
 > historial y entrega los mensajes pendientes usando los mismos UUID.
 >
 > La tabla resume las métricas: mensajes enviados, mensajes durante la caída,
-> mensajes perdidos, duplicados y tiempo de recuperación. El resultado
-> esperado es cero pérdidas y cero duplicados; esto confirma que la cola
-> persistente, el historial y la deduplicación hacen tolerante la caída
-> temporal del servidor.
+> mensajes perdidos, duplicados y tiempo de recuperación. En la corrida real
+> hubo cero duplicados y cero pérdidas en dos repeticiones; la primera perdió
+> siete mensajes y quedó marcada como recuperación parcial. Esa pérdida se
+> explica como una brecha de recuperación de la ventana de caída, no como un
+> fallo de la deduplicación.
 >
 > Como cierre, Docker hace reproducible el montaje, el CLI permite demostrarlo
 > sin depender de llamadas manuales y el experimento convierte la recuperación

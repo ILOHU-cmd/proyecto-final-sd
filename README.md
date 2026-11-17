@@ -712,9 +712,10 @@ Envía dos mensajes y observa los logs del grupo. Se verá algo así:
 de un grupo se detiene durante unos segundos mientras otro servidor sigue
 enviando?
 
-**Hipótesis:** ninguno. El servidor caído recupera lo perdido con
-`GET /history` al volver (entrega al menos una vez) y la deduplicación por
-UUID elimina cualquier repetición.
+**Hipótesis:** se esperaba que no se perdiera ni duplicara ninguno. El
+servidor caído recupera lo perdido con `GET /history` al volver (entrega al
+menos una vez) y la deduplicación por UUID elimina cualquier repetición. El
+resultado observado se reporta abajo: la hipótesis se cumple parcialmente.
 
 ### Montaje
 
@@ -763,42 +764,44 @@ python scripts/run_experiment.py \
   --skip-docker --repetitions 1 --duration 4
 ```
 
-### Salida esperada
+### Resultados reales
 
-```text
- Rep  Enviados  En caída  Perdidos  Duplic.  Recup.(s)     Estado
------------------------------------------------------------------
-   1        40        10         0        0       4.27         OK
-   2        40        10         0        0       4.51         OK
-   3        40        10         0        0       4.18         OK
------------------------------------------------------------------
-Total perdidos: 0   Total duplicados: 0
-Tiempo medio de recuperación: 4.32 s
-```
+La corrida válida es `experiment_20261116T165113Z` (`skip_docker: false`):
 
-Los datos quedan en `experiment/results/experiment_<fecha>.json` y `.csv`.
+| Repetición | Enviados | En caída | Perdidos | Duplicados | Recuperación (s) | Caída efectiva (s) | Estado |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 1 | 40 | 13 | 7 | 0 | 1.563 | 6.547 | Parcial (`recovered=false`) |
+| 2 | 40 | 14 | 0 | 0 | 1.547 | 6.578 | OK |
+| 3 | 40 | 13 | 0 | 0 | 2.313 | 6.547 | OK |
+| **Total** | **120** | **40** | **7** | **0** | **1.808** | — | **2/3 OK** |
 
-### Evidencia disponible
+Los datos completos están en
+`experiment/results/experiment_20261116T165113Z.json` y `.csv`. El análisis
+detallado está en `experiment/ANALISIS.md`.
 
-Se ejecutaron 3 repeticiones locales del script con dos servidores y el
-central de prueba. En esta validacion se uso `--skip-docker`, por lo que no se
-provoco una caida real; sirve para comprobar el envio, el drenaje de la cola,
-la comparacion de historiales y la persistencia de resultados:
+**Lectura honesta:** hubo 0 duplicados en las tres repeticiones y 0 pérdidas
+en las repeticiones 2 y 3. La repetición 1 perdió 7 mensajes (5.8 % de los
+120 enviados) y el script marcó `recovered=false`. No se debe presentar el
+resultado global como “cero pérdidas”.
 
-| Repeticion | Enviados | Perdidos | Duplicados | Recuperacion (s) | Estado |
-|---:|---:|---:|---:|---:|:---:|
-| 1 | 2 | 0 | 0 | 0.00 | OK |
-| 2 | 2 | 0 | 0 | 0.00 | OK |
-| 3 | 2 | 0 | 0 | 0.00 | OK |
+**Sobre la repetición 1:** se enviaron 13 mensajes durante la caída; 7 UUID no
+aparecieron en el historial final de `g3`. La caída efectiva fue de 6.547 s,
+superior a los 5 s configurados. No hubo errores de envío ni duplicados. La
+evidencia no conserva la marca `last_history_lamport` ni las trazas de
+`/history`, así que no permite aislar una causa única; el patrón es compatible
+con una recuperación incompleta de la ventana de caída.
 
-Los archivos de evidencia son el JSON y CSV con prefijo
-`experiment_20261115T033152Z` dentro de `experiment/results/`. La prueba con
-caida real queda pendiente de ejecutar cuando el daemon de Docker este
-disponible.
-Esos archivos son los que se usan para la tabla o gráfica del póster.
+La corrida `experiment_20261115T033152Z` **no** se usa como evidencia de
+resiliencia: se ejecutó con `--skip-docker`, envió solo 2 mensajes por
+repetición y no provocó caída. Sirve para validar el script, no para afirmar
+tolerancia a fallos.
 
-**Para el póster:** grafica la recuperación (s) por repetición, o el número
-de mensajes perdidos/duplicados (debe ser 0). Como extensión opcional, varía
+La suite automatizada actual tiene **53 pruebas aprobadas** con
+`python -m unittest discover -s tests -v`.
+
+**Para el póster:** usa la tabla real de tres repeticiones y explica las 7
+pérdidas de la primera. No uses la tabla de `--skip-docker` ni presentes
+“0 pérdidas” como resultado global. Como extensión opcional, varía
 `--down-for` (2, 5, 10 s) y muestra si el tiempo de recuperación cambia.
 
 > Si el script se ejecuta dentro de un contenedor no encontrará el comando
@@ -1020,8 +1023,23 @@ chat-distribuido-g3/
 ├── scripts/
 │   ├── mock_central.py    # Central de prueba (solo desarrollo)
 │   └── run_experiment.py  # Medición de caídas y recuperación
-├── experiment/            # Se crea al correr el experimento
+├── experiment/
+│   ├── ANALISIS.md        # Análisis de la corrida real
 │   └── results/           # JSON y CSV de las mediciones
+├── tests/                 # 53 pruebas automatizadas
+│   ├── test_api.py
+│   ├── test_backoff.py
+│   ├── test_central_client.py
+│   ├── test_cli.py
+│   ├── test_config.py
+│   └── test_storage.py
+├── docs/
+│   ├── POSTER.md                    # Texto fuente del póster
+│   ├── poster_final.html            # Diseño A1
+│   ├── poster_final.pdf             # PDF A1 para entrega
+│   ├── BITACORA_INTEROPERABILIDAD.md
+│   ├── PRUEBA_REINTENTOS.md
+│   └── evidencia/                   # Evidencia local de interop
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
@@ -1127,20 +1145,30 @@ recordar un canal. El grupo detecta la caída por sí mismo y reintenta.
    historial completo.
 6. **El central de prueba es en memoria.** No sirve para la sesión de
    interoperabilidad oficial; solo para desarrollo.
-7. **Cobertura de pruebas en crecimiento.** El CLI ya tiene pruebas
-   automatizadas para el formato de mensajes propios y remotos en
-   `tests/test_cli.py`; la cobertura de API, almacenamiento y sincronizacion
-   se completa en las ramas de sus respectivos duenos.
-8. **Sin salas ni mensajes directos.** El enunciado pide una sola sala,
+7. **Brecha de recuperación observada.** La primera repetición del
+   experimento real perdió 7 de 40 mensajes y terminó con `recovered=false`.
+   La evidencia no conserva la marca de historial ni las trazas de
+   `/history`, así que no se pudo aislar la causa exacta. Es una limitación
+   abierta, no un resultado que deba ocultarse.
+8. **Cobertura de pruebas.** La suite actual tiene **53 pruebas**
+   automatizadas: API, backoff, cliente central, CLI, configuración,
+   almacenamiento, Lamport, deduplicación y outbox. Sigue siendo una suite
+   pequeña frente a un sistema real.
+9. **Sin salas ni mensajes directos.** El enunciado pide una sola sala,
    `#general`; se mantuvo así a propósito.
 
 ---
 
 ## 15. Referencias
 
-- Vitillo, R. *Understanding Distributed Systems*, 2nd edition.
-- Lamport, L. (1978). *Time, Clocks, and the Ordering of Events in a
-  Distributed System*. Communications of the ACM.
+- Coulouris, G., Dollimore, J., Kindberg, T., & Blair, G. (2012).
+  *Distributed systems: Concepts and design* (5th ed.). Addison-Wesley.
+- Vitillo, R. (2022). *Understanding distributed systems* (2nd ed.).
+- Lamport, L. (1978). Time, clocks, and the ordering of events in a
+  distributed system. *Communications of the ACM, 21*(7), 558–565.
+  <https://doi.org/10.1145/359545.359563>
+- Fielding, R., & Reschke, J. (2014). *HTTP/1.1: Semantics and content*
+  (RFC 7231). IETF. <https://doi.org/10.17487/RFC7231>
 - Documentación de FastAPI: <https://fastapi.tiangolo.com/>
 - Documentación de httpx: <https://www.python-httpx.org/>
 - Documentación de Docker Compose: <https://docs.docker.com/compose/>

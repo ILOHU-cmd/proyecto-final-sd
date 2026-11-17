@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Chat distribuido en estrella — Póster G3</title>
+<style>
+  @page { size: A1 portrait; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    width: 594mm;
+    min-height: 841mm;
+    font-family: "DejaVu Sans", Arial, sans-serif;
+    color: #16212e;
+    background: #ffffff;
+    font-size: 13.4pt;
+    line-height: 1.34;
+  }
+  .page { padding: 14mm 14mm 12mm 14mm; }
+  .header {
+    background: #0d2b45;
+    color: #ffffff;
+    border-radius: 5mm;
+    padding: 10mm 12mm 9mm 12mm;
+  }
+  .kicker { font-size: 13pt; letter-spacing: .18em; text-transform: uppercase; color: #8fd3e8; font-weight: 700; }
+  h1 { font-size: 46pt; line-height: 1.02; margin: 2mm 0 3mm 0; letter-spacing: -.02em; }
+  .authors { font-size: 16pt; font-weight: 700; margin-bottom: 1.5mm; }
+  .meta { font-size: 12pt; color: #d7e9f2; }
+  .rule { height: 1.2mm; background: #16a6b6; margin: 6mm 0 5mm 0; border-radius: 1mm; }
+  .cols { display: table; width: 100%; table-layout: fixed; border-spacing: 6mm 0; margin-left: -6mm; margin-right: -6mm; }
+  .col { display: table-cell; vertical-align: top; width: 33.33%; }
+  .card {
+    border: 0.35mm solid #c9d8e2;
+    border-radius: 3mm;
+    padding: 5.4mm 5.8mm;
+    margin-bottom: 5mm;
+    background: #ffffff;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .card.tint { background: #f2f8fb; }
+  .card.warn { background: #fff8ed; border-color: #e8c58a; }
+  h2 {
+    font-size: 18.5pt;
+    color: #0d5f73;
+    margin: 0 0 3mm 0;
+    padding-bottom: 1.5mm;
+    border-bottom: 0.6mm solid #16a6b6;
+    letter-spacing: .01em;
+  }
+  h3 { font-size: 14pt; margin: 3mm 0 1.2mm 0; color: #0d2b45; }
+  p { margin: 0 0 2.8mm 0; }
+  ul { margin: 1.2mm 0 2.5mm 0; padding-left: 5mm; }
+  li { margin-bottom: 1.4mm; }
+  b, strong { color: #0d2b45; }
+  .small { font-size: 10.6pt; line-height: 1.28; }
+  .tiny { font-size: 9.2pt; line-height: 1.26; }
+  .tag { display: inline-block; background: #dff4f7; color: #0b6070; border-radius: 2mm; padding: .6mm 2mm; font-size: 10pt; font-weight: 700; margin: 0 1mm 1mm 0; }
+  .big { font-size: 20pt; font-weight: 800; color: #0d5f73; line-height: 1; }
+  .caption { font-size: 9.6pt; color: #4b6578; margin-top: 1.2mm; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border-bottom: 0.3mm solid #c9d8e2; padding: 1.5mm 1.1mm; text-align: left; vertical-align: top; }
+  th { background: #e7f2f7; color: #0d2b45; font-size: 10pt; }
+  td.num, th.num { text-align: right; }
+  .result-table { font-size: 10pt; }
+  .result-table tr.total td { font-weight: 800; background: #eef7f9; }
+  .ok { color: #0b7a4b; font-weight: 800; }
+  .bad { color: #b23b2e; font-weight: 800; }
+  .svg-wrap { text-align: center; margin: 1mm 0; }
+  svg { max-width: 100%; }
+  .callout { border-left: 2mm solid #e29a2d; padding-left: 3mm; margin: 2mm 0; }
+  .footer { margin-top: 1mm; border-top: 0.5mm solid #c9d8e2; padding-top: 2.2mm; }
+  .footer .cols { border-spacing: 4mm 0; margin-left: 0; margin-right: 0; }
+  .refs p { margin-bottom: 1.2mm; text-indent: -3mm; padding-left: 3mm; }
+  .contact { font-size: 10.4pt; }
+  .contact div { margin-bottom: 1.2mm; }
+  .nowrap { white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="header">
+    <div class="kicker">Póster científico · Sistemas Distribuidos · UIS</div>
+    <h1>Chat distribuido en estrella</h1>
+    <div class="authors">Emerson Ballesteros Díaz · Daniela López Pinto · Nataly [apellido] · Mariana [apellido]</div>
+    <div class="meta">41336 - Sistemas Distribuidos · Grupo G3 · Escuela de Ingeniería de Sistemas e Informática · Universidad Industrial de Santander</div>
+  </header>
+  <div class="rule"></div>
+
+  <div class="cols">
+
+    <!-- COLUMNA 1 -->
+    <div class="col">
+
+      <section class="card tint">
+        <h2>1. Pregunta e hipótesis</h2>
+        <p><b>Pregunta:</b> ¿cuántos mensajes se pierden o se duplican cuando el servidor de un grupo se cae durante unos segundos mientras otro grupo sigue enviando?</p>
+        <p><b>Hipótesis:</b> con una <i>outbox</i> persistente, UUID estables, deduplicación y recuperación por historial, no deberían aparecer duplicados y las pérdidas deberían ser nulas o mínimas.</p>
+        <p><b>Objetivo:</b> implementar el mínimo común del protocolo y medir pérdidas, duplicados y recuperación ante una caída controlada.</p>
+      </section>
+
+      <section class="card">
+        <h2>2. Arquitectura</h2>
+        <div class="svg-wrap">
+          <svg viewBox="0 0 760 430" width="100%" role="img" aria-label="Arquitectura en estrella">
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#0d5f73"/>
+              </marker>
+            </defs>
+            <rect x="245" y="18" width="270" height="108" rx="12" fill="#0d2b45"/>
+            <text x="380" y="48" text-anchor="middle" fill="#8fd3e8" font-size="18" font-weight="700">SERVIDOR CENTRAL</text>
+            <text x="380" y="72" text-anchor="middle" fill="#ffffff" font-size="14">POST /register · POST /messages</text>
+            <text x="380" y="94" text-anchor="middle" fill="#ffffff" font-size="14">GET /history?since=… · GET /health</text>
+
+            <rect x="55" y="245" width="270" height="150" rx="12" fill="#e7f2f7" stroke="#0d5f73" stroke-width="3"/>
+            <text x="190" y="278" text-anchor="middle" fill="#0d2b45" font-size="22" font-weight="800">g3</text>
+            <text x="190" y="304" text-anchor="middle" fill="#16212e" font-size="14">FastAPI · SQLite · outbox</text>
+            <text x="190" y="328" text-anchor="middle" fill="#16212e" font-size="14">Lamport · deduplicación</text>
+            <text x="190" y="358" text-anchor="middle" fill="#0d5f73" font-size="14" font-weight="700">cliente CLI</text>
+
+            <rect x="435" y="245" width="270" height="150" rx="12" fill="#e7f2f7" stroke="#0d5f73" stroke-width="3"/>
+            <text x="570" y="278" text-anchor="middle" fill="#0d2b45" font-size="22" font-weight="800">g3b</text>
+            <text x="570" y="304" text-anchor="middle" fill="#16212e" font-size="14">FastAPI · SQLite · outbox</text>
+            <text x="570" y="328" text-anchor="middle" fill="#16212e" font-size="14">Lamport · deduplicación</text>
+            <text x="570" y="358" text-anchor="middle" fill="#0d5f73" font-size="14" font-weight="700">cliente CLI</text>
+
+            <line x1="300" y1="126" x2="190" y2="238" stroke="#0d5f73" stroke-width="5" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+            <line x1="460" y1="126" x2="570" y2="238" stroke="#0d5f73" stroke-width="5" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+            <rect x="235" y="188" width="290" height="28" rx="5" fill="#ffffff"/>
+            <text x="380" y="209" text-anchor="middle" fill="#b23b2e" font-size="16" font-weight="700">los grupos no se hablan directamente</text>
+          </svg>
+        </div>
+        <p class="caption">El central registra, guarda y reenvía; cada grupo conserva usuarios, historial, reloj y cola en SQLite.</p>
+      </section>
+
+      <section class="card">
+        <h2>3. Método</h2>
+        <ul>
+          <li><b>Caída controlada:</b> <span class="nowrap">docker compose stop</span> / <span class="nowrap">start</span>; no <i>restart</i>.</li>
+          <li><b>Nodos:</b> emisor <b>g3b</b>, receptor <b>g3</b>, central de prueba.</li>
+          <li><b>Carga:</b> 40 mensajes por repetición, 2 msg/s.</li>
+          <li><b>Caída:</b> 5 s configurados, iniciada a los 5 s.</li>
+          <li><b>Repeticiones:</b> 3.</li>
+          <li><b>Entorno:</b> Linux, Python 3.14.10, FastAPI 0.162.4, Uvicorn 0.54.0, HTTPX 0.28.1, SQLite, Docker Compose.</li>
+        </ul>
+        <p><b>Medición:</b> el script compara los UUID enviados con el historial de <b>g3</b> y calcula enviados, en caída, perdidos, duplicados y recuperación. La caída efectiva se mide entre <i>stop</i> y <i>start</i>.</p>
+      </section>
+
+      <section class="card warn">
+        <h2>4. Mecanismos</h2>
+        <p><span class="tag">UUID inmutable</span><span class="tag">Lamport</span><span class="tag">outbox</span><span class="tag">backoff + jitter</span><span class="tag">heartbeat</span><span class="tag">history</span></p>
+        <p class="small">Antes de enviar se incrementa el reloj. Al recibir: <b>max(local, recibido) + 1</b>. El historial se ordena por <b>(lamport, origin, id)</b>. Un <b>5xx</b> se reintenta; un <b>4xx</b> se descarta y se registra.</p>
+      </section>
+
+    </div>
+
+    <!-- COLUMNA 2 -->
+    <div class="col">
+
+      <section class="card">
+        <h2>5. Resultados</h2>
+        <table class="result-table">
+          <thead>
+            <tr><th>Rep.</th><th class="num">Env.</th><th class="num">Caída</th><th class="num">Perd.</th><th class="num">Dupl.</th><th class="num">Recup. (s)</th><th class="num">Caída ef. (s)</th><th>Estado</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>1</td><td class="num">40</td><td class="num">13</td><td class="num bad">7</td><td class="num">0</td><td class="num">1.563</td><td class="num">6.547</td><td class="bad">Parcial</td></tr>
+            <tr><td>2</td><td class="num">40</td><td class="num">14</td><td class="num">0</td><td class="num">0</td><td class="num">1.547</td><td class="num">6.578</td><td class="ok">OK</td></tr>
+            <tr><td>3</td><td class="num">40</td><td class="num">13</td><td class="num">0</td><td class="num">0</td><td class="num">2.313</td><td class="num">6.547</td><td class="ok">OK</td></tr>
+            <tr class="total"><td>Total</td><td class="num">120</td><td class="num">40</td><td class="num">7</td><td class="num">0</td><td class="num">1.808</td><td class="num">—</td><td>2/3 OK</td></tr>
+          </tbody>
+        </table>
+        <p class="caption">Fuente: <b>experiment_20261116T165113Z.json/.csv</b> (<i>skip_docker: false</i>).</p>
+
+        <div class="svg-wrap" style="margin-top:3mm">
+          <svg viewBox="0 0 700 250" width="100%" role="img" aria-label="Gráfica de pérdidas y recuperación por repetición">
+            <text x="10" y="20" font-size="17" font-weight="700" fill="#0d2b45">Pérdidas por repetición</text>
+            <line x1="70" y1="200" x2="330" y2="200" stroke="#8aa2b2" stroke-width="2"/>
+            <rect x="95" y="90" width="50" height="110" fill="#b23b2e"/>
+            <rect x="180" y="200" width="50" height="0" fill="#0b7a4b"/>
+            <rect x="265" y="200" width="50" height="0" fill="#0b7a4b"/>
+            <text x="120" y="82" text-anchor="middle" font-size="18" font-weight="700" fill="#b23b2e">7</text>
+            <text x="205" y="195" text-anchor="middle" font-size="15" fill="#0b7a4b">0</text>
+            <text x="290" y="195" text-anchor="middle" font-size="15" fill="#0b7a4b">0</text>
+            <text x="120" y="222" text-anchor="middle" font-size="12">R1</text>
+            <text x="205" y="222" text-anchor="middle" font-size="12">R2</text>
+            <text x="290" y="222" text-anchor="middle" font-size="12">R3</text>
+            <text x="10" y="246" font-size="11" fill="#4b6578">0 duplicados en las 3 repeticiones. Total: 7/120 = 5.8 %.</text>
+
+            <text x="380" y="20" font-size="17" font-weight="700" fill="#0d2b45">Recuperación (s)</text>
+            <line x1="420" y1="200" x2="680" y2="200" stroke="#8aa2b2" stroke-width="2"/>
+            <rect x="445" y="128" width="48" height="72" fill="#16a6b6"/>
+            <rect x="535" y="129" width="48" height="71" fill="#16a6b6"/>
+            <rect x="625" y="94" width="48" height="106" fill="#16a6b6"/>
+            <text x="469" y="120" text-anchor="middle" font-size="13" fill="#0d2b45">1.563</text>
+            <text x="559" y="121" text-anchor="middle" font-size="13" fill="#0d2b45">1.547</text>
+            <text x="649" y="86" text-anchor="middle" font-size="13" fill="#0d2b45">2.313</text>
+            <text x="469" y="222" text-anchor="middle" font-size="12">R1</text>
+            <text x="559" y="222" text-anchor="middle" font-size="12">R2</text>
+            <text x="649" y="222" text-anchor="middle" font-size="12">R3</text>
+          </svg>
+        </div>
+      </section>
+
+      <section class="card warn">
+        <h2>6. Las 7 pérdidas de R1</h2>
+        <p>En R1 se enviaron <b>13 mensajes durante la caída</b>; <b>7 UUID</b> no aparecieron en el historial final de <b>g3</b> y el script marcó <b>recovered=false</b>.</p>
+        <ul>
+          <li>No hubo errores de envío: <b>send_errors=0</b>.</li>
+          <li>No hubo duplicados: <b>duplicates=0</b>.</li>
+          <li>La caída efectiva fue <b>6.547 s</b>, mayor que los 5 s configurados.</li>
+          <li>El JSON no conserva <b>last_history_lamport</b> ni las trazas de <b>/history</b>.</li>
+        </ul>
+        <div class="callout"><p><b>Explicación compatible:</b> recuperación incompleta de la ventana de caída. El receptor volvió y el emisor drenó su cola, pero la verificación final no encontró esos 7 mensajes. No es un fallo de idempotencia ni de ordenamiento; la causa raíz exacta no quedó instrumentada.</p></div>
+        <p class="small"><b>No se puede afirmar “cero pérdidas” como resultado global.</b></p>
+      </section>
+
+      <section class="card tint">
+        <h2>7. Pruebas y evidencia</h2>
+        <table style="font-size:9.8pt">
+          <tr><th>Bloque</th><th class="num">Pruebas</th></tr>
+          <tr><td>API</td><td class="num">8</td></tr>
+          <tr><td>Backoff y jitter</td><td class="num">5</td></tr>
+          <tr><td>Cliente central</td><td class="num">19</td></tr>
+          <tr><td>CLI y experimento</td><td class="num">5</td></tr>
+          <tr><td>Configuración</td><td class="num">9</td></tr>
+          <tr><td>Almacenamiento y Lamport</td><td class="num">7</td></tr>
+          <tr><td><b>Total</b></td><td class="num"><b>53</b></td></tr>
+        </table>
+        <p class="small" style="margin-top:2mm"><b>5xx:</b> dos <b>500</b>, luego <b>200</b>; 3 intentos con el mismo UUID; esperas <b>1.047 s</b> y <b>2.566 s</b>; <b>0 pendientes</b>.</p>
+        <p class="small"><b>4xx:</b> un <b>400</b> se descarta con <b>DESCARTE_4XX</b>, sin reintento.</p>
+        <p class="small"><b>Heartbeat:</b> 3 fallos consecutivos marcan caída; al volver, recupera historial antes de <b>en_linea=true</b>.</p>
+      </section>
+
+    </div>
+
+    <!-- COLUMNA 3 -->
+    <div class="col">
+
+      <section class="card">
+        <h2>8. Interoperabilidad</h2>
+        <p><b>Ensayo local real g3 ↔ g3b:</b> 40 mensajes, <b>0 faltantes</b>, <b>0 duplicados</b>, caída de <b>5.664 s</b> y recuperación completa; ambos servidores con <b>0 pendientes</b>.</p>
+        <p class="caption">Evidencia: <b>docs/evidencia/interoperabilidad_local_20261117.txt</b>.</p>
+        <h3>Qué funcionó</h3>
+        <ul class="small">
+          <li>Registro y renovación; reenvío por el central.</li>
+          <li>Outbox, recuperación por historial y deduplicación.</li>
+          <li>Orden (lamport, origin, id) y heartbeat.</li>
+        </ul>
+        <h3>Qué falta</h3>
+        <p class="small">La <b>sesión oficial</b> con el central del curso y los demás grupos. La bitácora base está en <b>docs/BITACORA_INTEROPERABILIDAD.md</b> y debe completarse con fecha, grupos, fallas y correcciones. <b>No se presenta como sesión oficial ya realizada.</b></p>
+      </section>
+
+      <section class="card">
+        <h2>9. Conclusiones</h2>
+        <ol>
+          <li><b>Arquitectura y protocolo:</b> la estrella con HTTP/JSON, UUID, outbox e historial es una base coherente y desacoplada.</li>
+          <li><b>Hipótesis parcial:</b> se confirma la ausencia de duplicados, pero no la ausencia total de pérdidas; R1 perdió 7 mensajes.</li>
+          <li><b>Tolerancia y orden:</b> Lamport, orden (lamport, origin, id) y deduplicación evitaron duplicados; la brecha está en la recuperación de la caída.</li>
+          <li><b>Reproducibilidad:</b> Docker Compose, script, JSON/CSV y 53 pruebas permiten repetir y auditar; falta instrumentar la marca de historial.</li>
+        </ol>
+      </section>
+
+      <section class="card warn">
+        <h2>10. Limitaciones</h2>
+        <ul class="small">
+          <li>SQLite y un solo proceso por servidor.</li>
+          <li>Sin autenticación ni TLS; central único.</li>
+          <li>El central de prueba es en memoria y no reemplaza el central oficial.</li>
+          <li><b>Falta la salida del script de conformidad oficial y la sesión oficial de interoperabilidad.</b></li>
+          <li>La pérdida de R1 no tiene causa raíz aislada.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>11. Trabajo futuro</h2>
+        <ol class="small">
+          <li>Ejecutar el script de conformidad oficial y guardar su salida.</li>
+          <li>Validar con el central del curso y varios grupos.</li>
+          <li>Instrumentar last_history_lamport, /history y la ventana de recuperación.</li>
+          <li>Marcar descartes 4xx, añadir TLS/autenticación y probar multi-host.</li>
+        </ol>
+      </section>
+
+      <section class="card tint">
+        <h2>12. Contacto</h2>
+        <div class="contact">
+          <div><b>Emerson Ballesteros Díaz</b> — GitHub: ILOHU-cmd; correo no registrado.</div>
+          <div><b>Daniela López Pinto</b> — lopezpintodaniela55@gmail.com</div>
+          <div><b>Nataly</b> — apellido y correo no registrados.</div>
+          <div><b>Mariana</b> — apellido y correo no registrados; la cuenta LauraVargas22 aparece en Git, identidad no confirmada.</div>
+          <div><b>Docente 41336</b> — nombre y correo no registrados.</div>
+          <div><b>Repositorio:</b> github.com/ILOHU-cmd/proyecto-final-sd</div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <section class="card" style="margin-top:0">
+    <h2>13. Línea de tiempo del experimento</h2>
+    <div class="svg-wrap">
+      <svg viewBox="0 0 1120 190" width="100%" role="img" aria-label="Línea de tiempo del experimento">
+        <line x1="70" y1="105" x2="1050" y2="105" stroke="#0d5f73" stroke-width="6"/>
+        <circle cx="70" cy="105" r="10" fill="#0d5f73"/>
+        <circle cx="300" cy="105" r="10" fill="#b23b2e"/>
+        <circle cx="520" cy="105" r="10" fill="#0b7a4b"/>
+        <circle cx="1050" cy="105" r="10" fill="#0d5f73"/>
+        <text x="70" y="145" text-anchor="middle" font-size="15" fill="#0d2b45" font-weight="700">0 s</text>
+        <text x="300" y="145" text-anchor="middle" font-size="15" fill="#b23b2e" font-weight="700">5 s · stop g3</text>
+        <text x="520" y="145" text-anchor="middle" font-size="15" fill="#0b7a4b" font-weight="700">10 s · start g3</text>
+        <text x="1050" y="145" text-anchor="middle" font-size="15" fill="#0d2b45" font-weight="700">20 s</text>
+        <text x="185" y="78" text-anchor="middle" font-size="14" fill="#4b6578">g3b envía 40 mensajes a 2 msg/s</text>
+        <text x="410" y="55" text-anchor="middle" font-size="14" fill="#b23b2e">caída efectiva ≈ 6.55 s</text>
+        <text x="410" y="175" text-anchor="middle" font-size="13" fill="#4b6578">13–14 mensajes durante la caída</text>
+        <text x="785" y="78" text-anchor="middle" font-size="14" fill="#0b7a4b">recuperación por historial y deduplicación</text>
+        <text x="785" y="175" text-anchor="middle" font-size="13" fill="#4b6578">se comparan los UUID enviados contra el historial de g3</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:0">
+    <h2>14. Mínimo común y reproducibilidad</h2>
+    <div class="cols">
+      <div class="col">
+        <h3>Mínimo común cubierto</h3>
+        <ul class="small">
+          <li>Docker Compose, variables de entorno y volúmenes.</li>
+          <li>Persistencia SQLite de usuarios e historial.</li>
+          <li>Usuarios locales y cliente CLI.</li>
+          <li>Registro y renovación periódica.</li>
+          <li>Envío y recepción federada.</li>
+          <li>Entrega al menos una vez y deduplicación.</li>
+          <li>Reloj de Lamport y orden (lamport, origin, id).</li>
+          <li>Heartbeat y recuperación por historial.</li>
+          <li>Logs de envío, recepción, reintento y descarte.</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>Evidencia</h3>
+        <ul class="small">
+          <li><b>53 pruebas</b> automatizadas aprobadas.</li>
+          <li><b>3 repeticiones reales</b> con Docker y 120 mensajes.</li>
+          <li><b>0 duplicados</b> en las tres repeticiones.</li>
+          <li>Ensayo local <b>g3 ↔ g3b</b>: 40 mensajes, 0 faltantes y 0 duplicados.</li>
+          <li>Dos <b>500</b> y luego <b>200</b> con el mismo UUID; un <b>400</b> descartado sin reintento.</li>
+          <li>Heartbeat con 3 fallos consecutivos y recuperación antes de volver a enviar.</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>Trazabilidad</h3>
+        <ul class="small">
+          <li>Datos crudos: <b>experiment_20261116T165113Z.json/.csv</b>.</li>
+          <li>Análisis: <b>experiment/ANALISIS.md</b>.</li>
+          <li>Script: <b>scripts/run_experiment.py</b>.</li>
+          <li>Bitácora local: <b>docs/BITACORA_INTEROPERABILIDAD.md</b>.</li>
+          <li>Evidencia de interop: <b>docs/evidencia/</b>.</li>
+          <li>Diseño reproducible: Dockerfile y docker-compose.yml.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer">
+    <div class="cols">
+      <div class="col" style="width:72%">
+        <h2 style="font-size:12pt;margin-bottom:1.5mm">Referencias</h2>
+        <div class="refs tiny">
+          <p>Coulouris, G., Dollimore, J., Kindberg, T., &amp; Blair, G. (2012). <i>Distributed systems: Concepts and design</i> (5th ed.). Addison-Wesley.</p>
+          <p>Fielding, R., &amp; Reschke, J. (2014). <i>Hypertext Transfer Protocol (HTTP/1.1): Semantics and content</i> (RFC 7231). IETF. https://doi.org/10.17487/RFC7231</p>
+          <p>Lamport, L. (1978). Time, clocks, and the ordering of events in a distributed system. <i>Communications of the ACM, 21</i>(7), 558–565. https://doi.org/10.1145/359545.359563</p>
+          <p>Vitillo, R. (2022). <i>Understanding distributed systems</i> (2nd ed.). Roberto Vitillo. · Python Software Foundation. (2026). <i>sqlite3</i>. https://docs.python.org/3/library/sqlite3.html · Ramírez, S. <i>FastAPI documentation</i>. https://fastapi.tiangolo.com/ · Docker Inc. <i>Docker Compose overview</i>. https://docs.docker.com/compose/</p>
+        </div>
+      </div>
+      <div class="col" style="width:28%">
+        <p class="tiny" style="margin-top:0"><b>Nota de transparencia:</b> los datos de resultados provienen de la corrida real con Docker <b>20261116T165113Z</b>. La corrida <b>20261115T033152Z</b> se descartó para resiliencia porque usó <b>--skip-docker</b> y no tuvo caída. Los apellidos/correos faltantes deben completarse antes de imprimir.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
