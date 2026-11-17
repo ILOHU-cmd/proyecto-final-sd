@@ -29,7 +29,7 @@ con sus pruebas. No repite la API, el CLI ni el reloj de Lamport de los demás m
 | 1:09–1:16 | 10 | Tras 3 fallos, `en_linea = False` y `CAIDA_CENTRAL`; la cola deja de enviar, pero los mensajes siguen en SQLite. |
 | 1:16–1:24 | 11 | Al volver, renueva el registro, pide el historial desde la marca anterior y solo entonces `en_linea = True`; después drena la cola. |
 | 1:24–1:31 | 12 | El reintento conserva el mismo UUID; si el central ya lo tiene, responde `duplicate` y no inserta dos veces. |
-| 1:31–1:38 | 13 | `test_backoff.py` y `test_config.py` cubren crecimiento, tope, azar y validación: **13 pruebas propias**. |
+| 1:31–1:38 | 13 | `test_backoff.py`, `test_config.py` y `test_central_client.py` cubren backoff, configuración, registro, latido e historial: **33 pruebas propias**. |
 | 1:38–1:44 | 14 | Tres tareas, un estado que coordina, backoff con jitter y un UUID que no cambia: si el central cae, no se pierde nada. |
 | 1:44–1:46 | Outro | Gracias. |
 
@@ -50,7 +50,7 @@ con sus pruebas. No repite la API, el CLI ni el reloj de Lamport de los demás m
 | 10 | 1:09.4 | 3 fallos seguidos: central caído |
 | 11 | 1:16.5 | Registro + historial antes de enviar |
 | 12 | 1:24.5 | El mismo UUID en cada reintento |
-| 13 | 1:31.0 | 13 pruebas propias |
+| 13 | 1:31.0 | 33 pruebas propias |
 | 14 | 1:37.5 | Tres tareas, un estado, cero mensajes perdidos |
 | Outro | 1:44.5 | Tres ideas para recordar |
 
@@ -93,8 +93,8 @@ Al volver, renueva el registro, pide el historial desde la marca anterior y solo
 El reintento conserva el mismo UUID; si el central ya lo tiene, responde `duplicate` y no
 inserta dos veces.
 
-`test_backoff.py` y `test_config.py` cubren crecimiento, tope, azar y validación:
-**13 pruebas propias**.
+`test_backoff.py`, `test_config.py` y `test_central_client.py` cubren backoff,
+configuración, registro, latido, historial y cola: **33 pruebas propias**.
 
 Tres tareas, un estado que coordina, backoff con jitter y un UUID que no cambia: si el
 central cae, no se pierde nada.
