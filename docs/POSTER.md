@@ -108,7 +108,7 @@ Los servidores de grupo **no se hablan directamente**. Todo mensaje pasa por el 
 
 **Qué funcionó:** registro y renovación, reenvío por el central, `outbox`, recuperación por historial, deduplicación por UUID, orden `(lamport, origin, id)` y detección por heartbeat.
 
-**Qué falta:** la sesión oficial con el central del curso y los servidores de los demás grupos. La bitácora base está en `docs/BITACORA_INTEROPERABILIDAD.md`; debe completarse con fecha, grupos participantes, fallas encontradas y correcciones. **No se presenta como una sesión oficial ya realizada.**
+**Alcance:** el ensayo es local, con el central de prueba. El profesor indicó que lo que debía entregar el script de conformidad se omite; por eso no se anexa una salida oficial ni se presenta una sesión oficial como realizada. La bitácora del ensayo está en `docs/BITACORA_INTEROPERABILIDAD.md`.
 
 ---
 
@@ -119,16 +119,15 @@ Los servidores de grupo **no se hablan directamente**. Todo mensaje pasa por el 
 3. **Tolerancia y orden:** Lamport persistente, orden `(lamport, origin, id)` y deduplicación evitaron duplicados; la brecha está en la recuperación de la ventana de caída.
 4. **Reproducibilidad y observabilidad:** Docker Compose, el script, JSON/CSV y 53 pruebas permiten repetir y auditar; falta instrumentar mejor la marca de historial y la ventana de recuperación.
 
-**Limitaciones:** SQLite y un solo proceso por servidor; sin autenticación ni TLS; central único; el central de prueba es en memoria y no reemplaza el central oficial; falta la salida del script de conformidad oficial y la sesión oficial de interoperabilidad.
+**Limitaciones:** SQLite y un solo proceso por servidor; sin autenticación ni TLS; central único; el central de prueba es en memoria y no reemplaza el central oficial. El script de conformidad se omite por indicación del profesor, así que no se anexa su salida.
 
 ---
 
 ## 7. Trabajo futuro
 
-1. Ejecutar el script de conformidad oficial y guardar su salida.
-2. Integrar y validar con el central del curso y varios grupos.
-3. Instrumentar `last_history_lamport`, `/history` y la ventana de recuperación para explicar las pérdidas tempranas.
-4. Marcar los mensajes descartados por `4xx`, añadir TLS/autenticación y probar en varios equipos.
+1. Integrar y validar con el central del curso y varios grupos.
+2. Instrumentar `last_history_lamport`, `/history` y la ventana de recuperación para explicar las pérdidas tempranas.
+3. Marcar los mensajes descartados por `4xx`, añadir TLS/autenticación y probar en varios equipos.
 
 ---
 

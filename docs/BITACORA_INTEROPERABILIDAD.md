@@ -4,10 +4,9 @@
 **Alcance:** interoperabilidad local entre dos servidores del grupo (`g3` y
 `g3b`) y el central de prueba del repositorio.
 
-> **Importante:** esta bitácora documenta un ensayo local. La sesión oficial de
-> interoperabilidad con el central del curso y los servidores de los demás
-> grupos todavía debe realizarse y registrarse en este mismo archivo. No se
-> presenta como si ya hubiera ocurrido.
+> **Alcance:** esta bitácora documenta un ensayo local. El profesor indicó que
+> lo que debía entregar el script de conformidad se omite; por eso no se anexa
+> una salida oficial ni se presenta una sesión oficial como realizada.
 
 ## 1. Objetivo
 
@@ -81,22 +80,19 @@ Esperando recuperación de g3...
 
 - El ensayo usa el **central de prueba**, no el central oficial del curso.
 - Solo participan dos servidores del mismo grupo, no varios grupos de la clase.
-- No se ejecutó el script de conformidad oficial; no hay salida oficial
-  guardada.
+- El script de conformidad se omite por indicación del profesor; no se anexa
+  salida oficial.
 - La corrida experimental con Docker de `experiment_20261116T165113Z` sí es
   real, pero su primera repetición perdió 7 mensajes. Esa pérdida debe
   explicarse en el póster y no ocultarse.
-- La sesión oficial de interoperabilidad sigue pendiente. Cuando se realice,
-  se debe agregar aquí:
-  - fecha y grupos participantes;
-  - conversación global observada;
-  - caída y recuperación por turnos;
-  - incompatibilidades encontradas;
-  - correcciones aplicadas.
+- El alcance es local; no se realizó la sesión oficial. Si el curso la retoma,
+  aquí se agregarían fecha, grupos, conversación global, caída y recuperación
+  por turnos, incompatibilidades y correcciones.
 
 ## 7. Conclusión
 
 La interoperabilidad local entre `g3` y `g3b` funcionó: 40 mensajes, 0
 faltantes, 0 duplicados y recuperación completa tras una caída de 5.664 s.
-Esta evidencia no reemplaza la sesión oficial con el central del curso y los
-demás grupos; es el ensayo previo y la base para completar la bitácora.
+El alcance es local y usa el central de prueba. El profesor indicó que lo que
+debía entregar el script de conformidad se omite; por eso la bitácora no anexa
+una salida oficial ni afirma una sesión oficial no realizada.

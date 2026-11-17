@@ -799,6 +799,10 @@ tolerancia a fallos.
 La suite automatizada actual tiene **53 pruebas aprobadas** con
 `python -m unittest discover -s tests -v`.
 
+El script de conformidad no se incluye: el profesor indicó que lo que debía
+entregar se omite. Por eso no se anexa su salida; la evidencia local queda en
+las 53 pruebas, la corrida real y el ensayo de interoperabilidad.
+
 **Para el póster:** usa la tabla real de tres repeticiones y explica las 7
 pérdidas de la primera. No uses la tabla de `--skip-docker` ni presentes
 “0 pérdidas” como resultado global. Como extensión opcional, varía
