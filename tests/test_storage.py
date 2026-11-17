@@ -136,6 +136,28 @@ class PruebasAlmacenamiento(unittest.TestCase):
             ],
         )
 
+    def test_el_historial_filtra_desde_lamport_y_respeta_limite(self):
+        for lamport, origin, identificador in [
+            (1, "g1", "11111111-1111-4111-8111-111111111111"),
+            (2, "g3", "33333333-3333-4333-8333-333333333333"),
+            (2, "g1", "22222222-2222-4222-8222-222222222222"),
+            (3, "g1", "44444444-4444-4444-8444-444444444444"),
+        ]:
+            self.base.insertar_mensaje(
+                crear_mensaje(
+                    lamport=lamport,
+                    origin=origin,
+                    identificador=identificador,
+                )
+            )
+
+        mensajes = self.base.listar_mensajes(desde_lamport=2, limite=2)
+
+        self.assertEqual(
+            [(mensaje.lamport, mensaje.origin) for mensaje in mensajes],
+            [(2, "g1"), (2, "g3")],
+        )
+
     # ------------------------------------------------------------------
     # Cola de salida
     # ------------------------------------------------------------------
