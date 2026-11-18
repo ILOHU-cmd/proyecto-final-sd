@@ -799,6 +799,10 @@ tolerancia a fallos.
 La suite automatizada actual tiene **53 pruebas aprobadas** con
 `python -m unittest discover -s tests -v`.
 
+El script de conformidad no se incluye: el profesor indicó que lo que debía
+entregar se omite. Por eso no se anexa su salida; la evidencia local queda en
+las 53 pruebas, la corrida real y el ensayo de interoperabilidad.
+
 **Para el póster:** usa la tabla real de tres repeticiones y explica las 7
 pérdidas de la primera. No uses la tabla de `--skip-docker` ni presentes
 “0 pérdidas” como resultado global. Como extensión opcional, varía
@@ -1034,10 +1038,11 @@ chat-distribuido-g3/
 │   ├── test_config.py
 │   └── test_storage.py
 ├── docs/
+│   ├── INFORME_FINAL.html           # Fuente del informe final
+│   ├── INFORME_FINAL.pdf            # Informe final del proyecto (A4)
 │   ├── POSTER.md                    # Texto fuente del póster
 │   ├── poster_final.html            # Diseño A1
 │   ├── poster_final.pdf             # PDF A1 para entrega
-│   ├── BITACORA_INTEROPERABILIDAD.md
 │   ├── PRUEBA_REINTENTOS.md
 │   └── evidencia/                   # Evidencia local de interop
 ├── Dockerfile
@@ -1049,6 +1054,10 @@ chat-distribuido-g3/
 ├── PLAN_EQUIPO.md          # Reparto de trabajo y plan de 7 días
 └── README.md
 ```
+
+El informe final completo está en
+[`docs/INFORME_FINAL.pdf`](docs/INFORME_FINAL.pdf); su fuente HTML es
+[`docs/INFORME_FINAL.html`](docs/INFORME_FINAL.html).
 
 ---
 
