@@ -8,18 +8,13 @@ servidor de chat que se conecta al servidor central del curso. Todos los
 usuarios del curso conversan en una única sala global, `#general`, y el
 sistema completo se comporta como un solo chat distribuido.
 
-> **Reparto de trabajo:** el detalle de quién es dueño de cada módulo, rama y
-> entregable está en [`PLAN_EQUIPO.md`](PLAN_EQUIPO.md). Este README explica el
-> sistema; el plan explica cómo lo trabaja el equipo sin generar conflictos.
-
 Este repositorio contiene el **mínimo común funcional**: usuarios locales,
 persistencia, cliente de consola, registro en el central, envío/recepción,
 reloj de Lamport, deduplicación, reintentos con backoff, heartbeat,
 recuperación de historial, Docker y el script del experimento de fallos.
 
-> Este README está pensado también como guion de estudio para la sustentación.
-> Cada decisión técnica incluye el *porqué* y la sección 8 resume las
-> respuestas a las preguntas más probables del profesor.
+> Cada decisión técnica incluye el *porqué*. Las preguntas frecuentes sobre
+> el diseño están en la sección 12.
 
 ---
 
@@ -430,7 +425,7 @@ docker compose down -v
 
 ---
 
-## 8. Decisiones de diseño (para la sustentación)
+## 8. Decisiones de diseño
 
 ### 8.1 ¿Por qué una estrella?
 
@@ -796,225 +791,29 @@ resiliencia: se ejecutó con `--skip-docker`, envió solo 2 mensajes por
 repetición y no provocó caída. Sirve para validar el script, no para afirmar
 tolerancia a fallos.
 
-La suite automatizada actual tiene **53 pruebas aprobadas** con
+La suite automatizada actual tiene **54 pruebas aprobadas** con
 `python -m unittest discover -s tests -v`.
 
 El script de conformidad no se incluye: el profesor indicó que lo que debía
 entregar se omite. Por eso no se anexa su salida; la evidencia local queda en
-las 53 pruebas, la corrida real y el ensayo de interoperabilidad.
+las 54 pruebas, la corrida real y el ensayo de interoperabilidad.
 
-**Para el póster:** usa la tabla real de tres repeticiones y explica las 7
-pérdidas de la primera. No uses la tabla de `--skip-docker` ni presentes
-“0 pérdidas” como resultado global. Como extensión opcional, varía
-`--down-for` (2, 5, 10 s) y muestra si el tiempo de recuperación cambia.
+Como extensión opcional, varía `--down-for` (2, 5, 10 s) y mide si el tiempo
+de recuperación cambia. No uses la corrida `--skip-docker` como evidencia de
+resiliencia: no provoca caída.
 
 > Si el script se ejecuta dentro de un contenedor no encontrará el comando
 > `docker`. Debe correr en el anfitrión.
 
 ---
 
-## 11. Git: trabajo en 4 ramas sin conflictos
-
-El esqueleto ya está completo en `main`. Para que el historial muestre la
-participación de los cuatro integrantes, cada uno debe hacer **al menos dos
-commits propios** en su rama (una prueba o documentación y una mejora
-pequeña). La regla de oro es **no editar archivos del módulo de otro**.
-
-> El plan detallado, con tareas concretas y fechas, está en
-> [`PLAN_EQUIPO.md`](PLAN_EQUIPO.md).
-
-### 11.1 Reparto y propiedad de archivos
-
-| Rama | Integrante | Archivos que puede tocar | Entregable individual |
-|---|---|---|---|
-| `feature/core-api-models` | **Daniela** | `app/main.py`, `app/models.py`, `app/logger.py`, `app/__init__.py` | Pruebas de API y revisión del contrato |
-| `feature/lamport-storage` | **Nataly** | `app/lamport.py`, `app/database.py` | Pruebas de reloj, persistencia y dedup |
-| `feature/central-sync-resilience` | **Emerson** | `app/central_client.py`, `app/config.py` | Pruebas de backoff/retry, bitácora de fallos e integración |
-| `feature/cli-docker-infra` | **Mariana** | `client/cli.py`, `client/__init__.py`, `scripts/run_experiment.py`, `scripts/mock_central.py`, `Dockerfile`, `docker-compose.yml`, `.env.example`, `.dockerignore`, `README.md` | Pruebas del CLI, experimento real y documentación |
-
-**Reparto de dificultad:** Emerson y Mariana tienen los módulos más complejos
-y amplios (sincronización/resiliencia y Docker/experimento/documentación).
-Daniela y Nataly tienen módulos más acotados y verificables.
-
-Los archivos compartidos tienen un solo editor para evitar conflictos:
-
-- `README.md`: **Mariana** (los demás le envían su sección).
-- `requirements.txt`: se cambia solo con acuerdo del grupo; lo aplica **Emerson**.
-- `experiment/results/`: lo genera el script; **Mariana** lo ejecuta y
-  **Nataly** analiza los datos.
-- Póster/sustentación: **Mariana** edita el diseño; cada uno entrega su bloque.
-
-### 11.2 Una sola vez: Emerson crea el repositorio
-
-El repositorio remoto se llama **`proyecto-final-sd`**:
-
-```bash
-cd chat-distribuido-g3
-git init
-git add .
-git commit -m "chore: esqueleto base del chat distribuido en estrella"
-git branch -M main
-
-# Opción con GitHub CLI (ya autenticado):
-gh repo create ILOHU-cmd/proyecto-final-sd --private --source=. --remote=origin --push
-
-# Opción manual:
-# git remote add origin https://github.com/ILOHU-cmd/proyecto-final-sd.git
-# git push -u origin main
-```
-
-### 11.3 Cada integrante: clonar y crear su rama
-
-```bash
-git clone https://github.com/ILOHU-cmd/proyecto-final-sd.git
-cd proyecto-final-sd
-
-# Identidad local del repositorio (una vez por equipo)
-git config user.name "Nombre Apellido"
-git config user.email "correo@uis.edu.co"
-
-# Cada uno ejecuta SOLO la línea de su nombre, no las cuatro.
-
-# Daniela
-git switch -c feature/core-api-models
-
-# Nataly
-git switch -c feature/lamport-storage
-
-# Emerson
-git switch -c feature/central-sync-resilience
-
-# Mariana
-git switch -c feature/cli-docker-infra
-```
-
-Cada integrante trabaja **solo** en sus archivos. Ejemplo de Emerson:
-
-```bash
-git status
-git diff
-git add app/central_client.py app/config.py tests/test_backoff.py
-git commit -m "test(sync): valida backoff exponencial y jitter"
-git push -u origin feature/central-sync-resilience
-```
-
-Buenas prácticas:
-
-- Commits pequeños y con mensaje en imperativo (`feat:`, `fix:`, `docs:`,
-  `test:`).
-- No usar `git add .` si hay archivos dudosos; mejor listar los archivos.
-- Nunca subir `.env`, `data/`, bases `.db` ni `__pycache__` (ya están en
-  `.gitignore`).
-- Hacer `git pull`/`rebase` antes de pedir el merge.
-
-### 11.4 Merge a `main` sin conflictos
-
-**Emerson** es el integrador y hace los merges en este orden (primero el
-núcleo, luego datos, después federación y por último infraestructura):
-
-| Orden | Rama | Dueño | Motivo |
-|---|---|---|---|
-| 1 | `feature/core-api-models` | Daniela | Define modelos y contratos de la API. |
-| 2 | `feature/lamport-storage` | Nataly | Base de datos, reloj y deduplicación. |
-| 3 | `feature/central-sync-resilience` | Emerson | Usa la API y el almacenamiento. |
-| 4 | `feature/cli-docker-infra` | Mariana | Integra cliente, Docker y documentación. |
-
-```bash
-# 1
-git switch main
-git pull --ff-only origin main
-git merge --no-ff feature/core-api-models -m "merge: núcleo de API y modelos"
-git push origin main
-
-# 2
-git merge --no-ff feature/lamport-storage -m "merge: reloj de Lamport y SQLite"
-git push origin main
-
-# 3
-git merge --no-ff feature/central-sync-resilience -m "merge: registro, heartbeat y reintentos"
-git push origin main
-
-# 4
-git merge --no-ff feature/cli-docker-infra -m "merge: cliente, Docker y experimento"
-git push origin main
-```
-
-Después de cada merge, Emerson corre la prueba mínima:
-
-```bash
-docker compose --profile local --profile pair up --build -d
-python client/cli.py --url http://localhost:8001 create-user prueba
-python client/cli.py --url http://localhost:8001 send prueba "hola"
-sleep 2
-python client/cli.py --url http://localhost:8002 read
-docker compose down
-```
-
-Después de cada merge, los demás actualizan su rama:
-
-```bash
-git switch main
-git pull --ff-only origin main
-
-git switch feature/central-sync-resilience
-git rebase main
-git push --force-with-lease
-```
-
-> `--force-with-lease` solo se usa en la rama personal, nunca en `main`.
-
-### 11.5 Si aparece un conflicto
-
-Casi siempre significa que dos personas tocaron el mismo archivo. Se resuelve
-en la rama, no en `main`:
-
-```bash
-git switch feature/mi-rama
-git fetch origin
-git rebase origin/main
-
-# Git marca los archivos con conflicto
-git status
-# Editar el archivo, dejar la versión correcta y borrar <<<<<<< ======= >>>>>>>
-git add archivo_resuelto.py
-git rebase --continue
-
-git push --force-with-lease
-```
-
-Regla para el equipo: **el dueño del módulo resuelve el conflicto**. Si es en
-`app/main.py`, lo resuelve Daniela; si es en `app/central_client.py`, Emerson;
-si es en `app/database.py`, Nataly; si es en `docker-compose.yml` o
-`README.md`, Mariana.
-
-### 11.6 Evidencia de participación
-
-Para el informe y la sustentación:
-
-```bash
-git log --oneline --graph --all --decorate
-git shortlog -sne --all
-```
-
-El profesor puede pedir el historial de commits; por eso cada integrante debe
-tener commits propios, no solo merges del líder.
-
-### 11.7 Limpieza final
-
-```bash
-git branch -d feature/core-api-models
-git push origin --delete feature/core-api-models
-```
-
----
-
-## 12. Estructura del repositorio
+## 11. Estructura del repositorio
 
 ```text
-chat-distribuido-g3/
-├── app/
+proyecto-final-sd/
+├── app/                   # Servidor FastAPI del grupo
 │   ├── __init__.py
-│   ├── main.py            # FastAPI: API local + API federada
+│   ├── main.py            # API local + API federada
 │   ├── config.py          # Variables de entorno validadas
 │   ├── models.py          # Pydantic: mensaje, usuarios, respuestas
 │   ├── database.py        # SQLite: historial, outbox, estado
@@ -1029,49 +828,27 @@ chat-distribuido-g3/
 │   └── run_experiment.py  # Medición de caídas y recuperación
 ├── experiment/
 │   ├── ANALISIS.md        # Análisis de la corrida real
+│   ├── evidencia/         # Reintentos e interoperabilidad local
 │   └── results/           # JSON y CSV de las mediciones
-├── tests/                 # 53 pruebas automatizadas
+├── tests/                 # 54 pruebas automatizadas
 │   ├── test_api.py
 │   ├── test_backoff.py
 │   ├── test_central_client.py
 │   ├── test_cli.py
 │   ├── test_config.py
 │   └── test_storage.py
-├── docs/
-│   ├── INFORME_FINAL.html           # Fuente del informe final
-│   ├── INFORME_FINAL.pdf            # Informe final del proyecto (A4)
-│   ├── POSTER.md                    # Texto fuente del póster
-│   ├── poster_final.html            # Diseño A1
-│   ├── poster_final.pdf             # PDF A1 para entrega
-│   ├── PRUEBA_REINTENTOS.md
-│   └── evidencia/                   # Evidencia local de interop
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
 ├── .dockerignore
-├── PLAN_EQUIPO.md          # Reparto de trabajo y plan de 7 días
 └── README.md
 ```
 
-El informe final completo está en
-[`docs/INFORME_FINAL.pdf`](docs/INFORME_FINAL.pdf); su fuente HTML es
-[`docs/INFORME_FINAL.html`](docs/INFORME_FINAL.html).
-
 ---
 
-## 13. Guion de sustentación (10 minutos)
-
-| Tiempo | Qué decir |
-|---|---|
-| 0:00–1:30 | Problema y arquitectura en estrella. El central es el único que conoce a todos. |
-| 1:30–4:00 | Recorrido de un mensaje: UUID, Lamport, outbox, dedup. Enseñar el log en vivo. |
-| 4:00–6:00 | Demo: dos grupos conversan; se apaga `g3`; `g3b` sigue escribiendo; `g3` vuelve y recupera sin duplicados. |
-| 6:00–8:00 | Experimento: pregunta, 3 repeticiones, tabla de pérdidas/duplicados/recuperación. |
-| 8:00–10:00 | Limitaciones (un solo worker, sin autenticación, central único) y conclusiones. |
-
-### Preguntas frecuentes del profesor
+## 12. Preguntas frecuentes sobre el diseño
 
 **¿Por qué el `id` se genera en el origen y no en el central?**
 Porque el emisor necesita reintentar sin cambiar la identidad del mensaje. Si
@@ -1133,7 +910,7 @@ recordar un canal. El grupo detecta la caída por sí mismo y reintenta.
 
 ---
 
-## 14. Limitaciones y trabajo futuro
+## 13. Limitaciones y trabajo futuro
 
 1. **Un solo proceso por servidor.** SQLite + candado en memoria no soportan
    varios workers. Solución: PostgreSQL/Redis con restricción única y
@@ -1159,7 +936,7 @@ recordar un canal. El grupo detecta la caída por sí mismo y reintenta.
    La evidencia no conserva la marca de historial ni las trazas de
    `/history`, así que no se pudo aislar la causa exacta. Es una limitación
    abierta, no un resultado que deba ocultarse.
-8. **Cobertura de pruebas.** La suite actual tiene **53 pruebas**
+8. **Cobertura de pruebas.** La suite actual tiene **54 pruebas**
    automatizadas: API, backoff, cliente central, CLI, configuración,
    almacenamiento, Lamport, deduplicación y outbox. Sigue siendo una suite
    pequeña frente a un sistema real.
@@ -1168,7 +945,7 @@ recordar un canal. El grupo detecta la caída por sí mismo y reintenta.
 
 ---
 
-## 15. Referencias
+## 14. Referencias
 
 - Coulouris, G., Dollimore, J., Kindberg, T., & Blair, G. (2012).
   *Distributed systems: Concepts and design* (5th ed.). Addison-Wesley.
