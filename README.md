@@ -8,7 +8,28 @@ servidor de chat que se conecta al servidor central del curso. Todos los
 usuarios del curso conversan en una única sala global, `#general`, y el
 sistema completo se comporta como un solo chat distribuido.
 
-Este repositorio contiene el **mínimo común funcional**: usuarios locales,
+> **Alcance de este repositorio.** Aquí está únicamente el proyecto funcional:
+> servidor, cliente, pruebas, Docker y datos del experimento. El informe, el
+> póster y el video se entregan por separado.
+
+### Equipo y módulos
+
+| Integrante | Módulo |
+|---|---|
+| Emerson | Integración, cliente del central, reintentos, heartbeat e historial |
+| Daniela | API, modelos, logs y endpoints federados |
+| Nataly | Reloj de Lamport, SQLite, deduplicación y orden |
+| Mariana | Cliente CLI, Docker y experimento |
+
+### Estado final
+
+- **54 pruebas automatizadas** aprobadas.
+- Corrida válida: `experiment_20261116T165113Z`, tres repeticiones.
+- **120 mensajes enviados, 7 perdidos (solo en la primera repetición) y 0 duplicados.**
+- Recuperación media: **1.808 s**.
+- Evidencia de reintentos e interoperabilidad local en `experiment/evidencia/`.
+
+El sistema implementa el **mínimo común funcional** completo: usuarios locales,
 persistencia, cliente de consola, registro en el central, envío/recepción,
 reloj de Lamport, deduplicación, reintentos con backoff, heartbeat,
 recuperación de historial, Docker y el script del experimento de fallos.
